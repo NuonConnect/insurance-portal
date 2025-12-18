@@ -1,0 +1,50 @@
+{
+  "AL_SAGR": [
+    {
+      "id": "AL_SAGR_1766038855435",
+      "provider": "AL SAGR NATIONAL",
+      "plan": "x",
+      "network": "MEDNET",
+      "copay": "20%",
+      "premium": 500,
+      "selected": false,
+      "status": "none",
+      "benefits": {
+        "areaOfCover": "",
+        "annualLimit": "As per policy schedule",
+        "network": "",
+        "consultationDeductible": "",
+        "prescribedDrugs": "",
+        "diagnostics": "",
+        "preexistingCondition": "",
+        "physiotherapy": "",
+        "outpatientMaternity": "",
+        "inpatientMaternity": "",
+        "dental": {
+          "enabled": true,
+          "value": ""
+        },
+        "optical": {
+          "enabled": true,
+          "value": ""
+        },
+        "alternativeMedicine": {
+          "enabled": false,
+          "value": ""
+        },
+        "inpatient": "Covered as per policy terms",
+        "outpatient": "Covered as per policy terms",
+        "emergency": "24/7 Coverage",
+        "maternity": "As per selected plan",
+        "preexisting": {
+          "type": "standard",
+          "value": "All pre-existing medical conditions should be declared in the Medical Application Form and is subject to medical underwriting."
+        },
+        "pharmacyLimit": "",
+        "consultation": ""
+      },
+      "isManual": true,
+      "providerKey": "AL_SAGR"
+    }
+  ]
+}

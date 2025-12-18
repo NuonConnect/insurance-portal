@@ -1,0 +1,40 @@
+{
+  "AL_SAGR_1766038855435": {
+    "areaOfCover": "A",
+    "annualLimit": "As per policy schedule",
+    "network": "x",
+    "consultationDeductible": "B",
+    "prescribedDrugs": "x",
+    "diagnostics": "x",
+    "preexistingCondition": "A",
+    "physiotherapy": "x",
+    "outpatientMaternity": "x",
+    "inpatientMaternity": "A",
+    "dental": {
+      "enabled": true,
+      "value": "x"
+    },
+    "optical": {
+      "enabled": true,
+      "value": "x"
+    },
+    "alternativeMedicine": {
+      "enabled": false,
+      "value": "x"
+    },
+    "inpatient": "Covered as per policy terms",
+    "outpatient": "Covered as per policy terms",
+    "emergency": "24/7 Coverage",
+    "maternity": "As per selected plan",
+    "preexisting": {
+      "type": "standard",
+      "value": "All pre-existing medical conditions should be declared in the Medical Application Form and is subject to medical underwriting."
+    },
+    "pharmacyLimit": "",
+    "consultation": "",
+    "_meta": {
+      "updatedAt": "2025-12-18T06:31:59.375Z",
+      "updatedBy": "NSIB User"
+    }
+  }
+}
