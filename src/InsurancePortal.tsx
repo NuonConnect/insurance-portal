@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 
 // ============================================================================
+// CLOUD STORAGE - Uses Netlify Functions (automatic with GitHub deploy)
+// ============================================================================
+// No configuration needed! Data is stored in Netlify Blobs automatically.
+// Works across all devices and users.
+
+// ============================================================================
 // TYPES
 // ============================================================================
 interface FamilyMember {
@@ -572,7 +578,7 @@ export default function InsurancePortal() {
           if (data.success && data.benefits) {
             const cleanBenefits: { [key: string]: PlanBenefits } = {};
             Object.keys(data.benefits).forEach(key => {
-              const { _meta, ...benefitData } = data.benefits[key];
+              const { _updatedAt, ...benefitData } = data.benefits[key];
               cleanBenefits[key] = benefitData as PlanBenefits;
             });
             setCloudBenefits(cleanBenefits);
@@ -1113,12 +1119,13 @@ export default function InsurancePortal() {
       await fetch('/api/benefits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: planId, benefits: updatedBenefits, updatedBy: 'NSIB User' })
+        body: JSON.stringify({ planKey: planId, benefits: updatedBenefits })
       });
       setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
       alert('✅ Benefits saved! Changes will persist after refresh.');
     } catch (error) {
-      alert('✅ Benefits saved locally! Changes will persist after refresh.');
+      console.error('Error saving benefits to cloud:', error);
+      alert('✅ Benefits saved locally! Cloud sync may be unavailable.');
     }
     
     setShowBenefits(prev => ({ ...prev, [key]: false }));

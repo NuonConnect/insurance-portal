@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@netlify/blobs": "^10.4.4",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "react": "^18.2.0",
