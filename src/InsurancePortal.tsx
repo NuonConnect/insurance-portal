@@ -51,7 +51,7 @@ interface InsurancePlan {
   copay: string;
   premium: number;
   selected: boolean;
-  status: 'none' | 'renewal' | 'recommended';
+  status: 'none' | 'renewal' | 'alternative' | 'recommended';
   benefits: PlanBenefits;
   isManual?: boolean;
   providerKey?: string;
@@ -988,7 +988,7 @@ export default function InsurancePortal() {
       [memberId]: {
         ...prev[memberId],
         comparison: prev[memberId].comparison.map(item =>
-          item.id === planId ? { ...item, status: status as 'none' | 'renewal' | 'recommended' } : item
+          item.id === planId ? { ...item, status: status as 'none' | 'renewal' | 'alternative' | 'recommended' } : item
         )
       }
     }));
@@ -1020,7 +1020,7 @@ export default function InsurancePortal() {
             comparison: updated[memberId].comparison.map(plan => ({
               ...plan,
               selected: selectedPlanIds.includes(plan.id) ? true : plan.selected,
-              status: selectedPlanIds.includes(plan.id) ? (selectedStatuses[plan.id] as 'none' | 'renewal' | 'recommended') : plan.status
+              status: selectedPlanIds.includes(plan.id) ? (selectedStatuses[plan.id] as 'none' | 'renewal' | 'alternative' | 'recommended') : plan.status
             }))
           };
         }
@@ -1374,6 +1374,7 @@ export default function InsurancePortal() {
             <th class="col-plan">
               ${plan.provider}
               ${plan.status === 'renewal' ? '<div class="tag tag-renewal">RENEWAL</div>' : ''}
+              ${plan.status === 'alternative' ? '<div class="tag tag-alternative">ALTERNATIVE</div>' : ''}
               ${plan.status === 'recommended' ? '<div class="tag tag-recommended">RECOMMENDED</div>' : ''}
             </th>
           `).join('')}
@@ -1405,7 +1406,7 @@ export default function InsurancePortal() {
           </tr>
         `).join('')}
         <tr class="row-total">
-          <td class="cell-total-label">${numMembers > 1 ? 'TOTAL Premium (AED)' : 'Annual Premium (AED)'}</td>
+          <td class="cell-total-label">${numMembers > 1 ? 'TOTAL Premium (AED) Including (VAT AND BASMAH/ICP)' : 'Annual Premium (AED) Including (VAT AND BASMAH/ICP)'}</td>
           ${selectedPlans.map(plan => `<td class="cell-total-value">${planTotals[plan.id].toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
         </tr>
       </tbody>
@@ -1456,7 +1457,7 @@ export default function InsurancePortal() {
       width: 297mm;
       height: 210mm;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 9px;
+      font-size: 10px;
       line-height: 1.3;
       background: white;
       -webkit-print-color-adjust: exact !important;
@@ -1530,7 +1531,7 @@ export default function InsurancePortal() {
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 8px;
+      font-size: 9px;
       margin-bottom: 6px;
     }
     .main-table th,
@@ -1546,7 +1547,7 @@ export default function InsurancePortal() {
       background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
       color: white;
       font-weight: bold;
-      font-size: 9px;
+      font-size: 10px;
       padding: 6px 5px;
     }
     .col-benefit { text-align: left !important; background: #1e40af !important; }
@@ -1559,19 +1560,19 @@ export default function InsurancePortal() {
       background: #f8fafc;
     }
     .cell-value { 
-      font-size: 8px; 
+      font-size: 9px; 
       text-align: center !important;
       vertical-align: middle !important;
     }
     .cell-detail { 
-      font-size: 7px; 
+      font-size: 8px; 
       line-height: 1.2; 
       text-align: center !important;
       vertical-align: middle !important;
       padding: 3px 4px !important; 
     }
     .cell-small { 
-      font-size: 6.5px; 
+      font-size: 7.5px; 
       line-height: 1.15; 
       text-align: center !important;
       vertical-align: middle !important;
@@ -1579,7 +1580,7 @@ export default function InsurancePortal() {
     .cell-premium { 
       font-weight: 600; 
       color: #059669; 
-      font-size: 9px; 
+      font-size: 10px; 
       text-align: center !important;
       vertical-align: middle !important;
     }
@@ -1596,12 +1597,12 @@ export default function InsurancePortal() {
       font-weight: bold;
       color: #1e40af;
       background: #bfdbfe !important;
-      font-size: 9px;
+      font-size: 10px;
     }
     .cell-total-value {
       font-weight: bold;
       color: #1d4ed8;
-      font-size: 11px;
+      font-size: 12px;
       background: #dbeafe;
       text-align: center !important;
       vertical-align: middle !important;
@@ -1612,11 +1613,12 @@ export default function InsurancePortal() {
       display: inline-block;
       padding: 1px 6px;
       border-radius: 8px;
-      font-size: 6px;
+      font-size: 7px;
       font-weight: bold;
       margin-top: 2px;
     }
     .tag-renewal { background: #fbbf24; color: #78350f; }
+    .tag-alternative { background: #8b5cf6; color: white; }
     .tag-recommended { background: #22c55e; color: white; }
     
     /* Advisor & Disclaimer */
@@ -2108,6 +2110,7 @@ ${consolidatedTable}
                                       <select value={plan.status} onChange={(e) => updatePlanStatus(member.id, plan.id, e.target.value)} className="text-xs px-2 py-1 border rounded">
                                         <option value="none">-</option>
                                         <option value="renewal">Renewal</option>
+                                        <option value="alternative">Alternative</option>
                                         <option value="recommended">Recommended</option>
                                       </select>
                                     </td>
