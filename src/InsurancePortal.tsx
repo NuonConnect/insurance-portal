@@ -75,7 +75,8 @@ const STORAGE_KEYS = {
   PLAN_EDITS: 'nsib_plan_edits',
   BENEFITS_EDITS: 'nsib_benefits_edits',
   REPORT_HISTORY: 'nsib_report_history',
-  MANUAL_PLANS: 'nsib_manual_plans'
+  MANUAL_PLANS: 'nsib_manual_plans',
+  CUSTOM_PROVIDERS: 'nsib_custom_providers'
 };
 
 // ============================================================================
@@ -512,8 +513,8 @@ export default function InsurancePortal() {
   // Cloud benefits
   const [cloudBenefits, setCloudBenefits] = useState<{ [key: string]: PlanBenefits }>({});
   
-  // LOCAL PERSISTENT EDITS - These survive page refresh
-  const [localPlanEdits, setLocalPlanEdits] = useState<{ [planId: string]: { plan?: string; network?: string; copay?: string; premium?: number } }>({});
+  // LOCAL PERSISTENT EDITS - These survive page refresh (now member-specific: memberId_planId)
+  const [localPlanEdits, setLocalPlanEdits] = useState<{ [memberPlanKey: string]: { plan?: string; network?: string; copay?: string; premium?: number } }>({});
   const [localBenefitsEdits, setLocalBenefitsEdits] = useState<{ [planId: string]: PlanBenefits }>({});
   
   // Manual plans
@@ -522,9 +523,15 @@ export default function InsurancePortal() {
   const [currentProvider, setCurrentProvider] = useState('');
   const [newManualPlan, setNewManualPlan] = useState({ planName: '', network: '', copay: '', premium: '' });
   
+  // Custom providers (user-added companies)
+  const [customProviders, setCustomProviders] = useState<{ id: string; name: string; networks: string[] }[]>([]);
+  const [showAddProviderModal, setShowAddProviderModal] = useState(false);
+  const [newProviderName, setNewProviderName] = useState('');
+  
   // Edit plan
   const [editingResultPlan, setEditingResultPlan] = useState<any>(null);
   const [showEditResultPlanModal, setShowEditResultPlanModal] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
   
   // Report
   const [advisorComment, setAdvisorComment] = useState('');
@@ -567,6 +574,16 @@ export default function InsurancePortal() {
       }
     } catch (e) {
       console.error('Error loading manual plans:', e);
+    }
+
+    // Load custom providers from localStorage
+    try {
+      const savedCustomProviders = localStorage.getItem(STORAGE_KEYS.CUSTOM_PROVIDERS);
+      if (savedCustomProviders) {
+        setCustomProviders(JSON.parse(savedCustomProviders));
+      }
+    } catch (e) {
+      console.error('Error loading custom providers:', e);
     }
 
     // Load cloud benefits
@@ -634,6 +651,11 @@ export default function InsurancePortal() {
     localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(manualPlans));
   }, [manualPlans]);
 
+  // Save custom providers to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CUSTOM_PROVIDERS, JSON.stringify(customProviders));
+  }, [customProviders]);
+
   // Get plan benefits with local overrides
   const getPlanBenefits = (provider: string, planName: string, planId?: string): PlanBenefits => {
     // First check local edits (highest priority)
@@ -656,9 +678,11 @@ export default function InsurancePortal() {
     return { ...defaultBenefits };
   };
 
-  // Apply local plan edits to a plan
-  const applyLocalEdits = (plan: InsurancePlan): InsurancePlan => {
-    const edits = localPlanEdits[plan.id];
+  // Apply local plan edits to a plan (member-specific)
+  const applyLocalEdits = (plan: InsurancePlan, memberId?: number): InsurancePlan => {
+    // Use member-specific key if memberId provided, otherwise fall back to plan.id only
+    const memberPlanKey = memberId !== undefined ? `${memberId}_${plan.id}` : plan.id;
+    const edits = localPlanEdits[memberPlanKey];
     const benefitsEdits = localBenefitsEdits[plan.id];
     
     if (!edits && !benefitsEdits) return plan;
@@ -723,7 +747,7 @@ export default function InsurancePortal() {
       alert('Please enter plan name and premium');
       return;
     }
-    const providerName = MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.name || currentProvider;
+    const providerName = MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.name || customProviders.find(p => p.id === currentProvider)?.name || currentProvider;
     const plan: InsurancePlan = {
       id: `${currentProvider}_${Date.now()}`,
       provider: providerName,
@@ -1011,18 +1035,34 @@ export default function InsurancePortal() {
   const openEditResultPlanModal = (memberId: number, planId: string) => {
     const plan = memberResults[memberId].comparison.find((p: any) => p.id === planId);
     if (!plan) return;
-    setEditingResultPlan({ ...plan, memberId });
+    // Check if there are existing edits for this member+plan
+    const memberPlanKey = `${memberId}_${planId}`;
+    const existingEdits = localPlanEdits[memberPlanKey];
+    setEditingResultPlan({ 
+      ...plan, 
+      plan: existingEdits?.plan || plan.plan,
+      network: existingEdits?.network || plan.network,
+      copay: existingEdits?.copay || plan.copay,
+      premium: existingEdits?.premium !== undefined ? existingEdits.premium : plan.premium
+    });
+    setEditingMemberId(memberId);
     setShowEditResultPlanModal(true);
   };
 
-  // Save edited result plan
+  // Save edited result plan (member-specific)
   const saveEditedResultPlan = () => {
     if (!editingResultPlan || !editingResultPlan.plan || !editingResultPlan.premium) {
       alert('Please enter plan name and premium');
       return;
     }
     
+    if (editingMemberId === null) {
+      alert('Error: Member ID not found');
+      return;
+    }
+    
     const planId = editingResultPlan.id;
+    const memberPlanKey = `${editingMemberId}_${planId}`;
     const editData = {
       plan: editingResultPlan.plan,
       network: editingResultPlan.network || 'Standard',
@@ -1030,20 +1070,19 @@ export default function InsurancePortal() {
       premium: parseFloat(editingResultPlan.premium)
     };
 
-    // Save to localStorage for persistence
+    // Save to localStorage with member-specific key
     setLocalPlanEdits(prev => ({
       ...prev,
-      [planId]: editData
+      [memberPlanKey]: editData
     }));
 
-    // Update current session state for ALL members with this plan
+    // Update current session state for ONLY this member's plan
     setMemberResults(prev => {
       const updated = { ...prev };
-      Object.keys(updated).forEach(key => {
-        const memberId = parseInt(key);
-        updated[memberId] = {
-          ...updated[memberId],
-          comparison: updated[memberId].comparison.map((item: any) =>
+      if (updated[editingMemberId]) {
+        updated[editingMemberId] = {
+          ...updated[editingMemberId],
+          comparison: updated[editingMemberId].comparison.map((item: any) =>
             item.id === planId ? {
               ...item,
               plan: editData.plan,
@@ -1053,13 +1092,14 @@ export default function InsurancePortal() {
             } : item
           )
         };
-      });
+      }
       return updated;
     });
 
     setShowEditResultPlanModal(false);
     setEditingResultPlan(null);
-    alert('✅ Plan updated and saved! Changes will persist after refresh.');
+    setEditingMemberId(null);
+    alert('✅ Plan updated for this member! Changes will persist after refresh.');
   };
 
   // Toggle benefits panel
@@ -1765,9 +1805,16 @@ ${consolidatedTable}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">✍️ Manual Plan Entry</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            {/* Predefined providers */}
             {MANUAL_PROVIDERS.map(provider => (
               <button key={provider.id} onClick={() => { setCurrentProvider(provider.id); setShowManualPlanModal(true); }} className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium">➕ {provider.name}</button>
             ))}
+            {/* Custom providers added by user */}
+            {customProviders.map(provider => (
+              <button key={provider.id} onClick={() => { setCurrentProvider(provider.id); setShowManualPlanModal(true); }} className="px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium">➕ {provider.name}</button>
+            ))}
+            {/* Add new provider button */}
+            <button onClick={() => setShowAddProviderModal(true)} className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-medium border-2 border-dashed border-gray-400">➕ Add Company</button>
           </div>
           {/* Show count of manual plans saved */}
           {Object.keys(manualPlans).some(key => manualPlans[key]?.length > 0) && (
@@ -1777,16 +1824,58 @@ ${consolidatedTable}
           )}
         </div>
 
+        {/* Add New Provider Modal */}
+        {showAddProviderModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full m-4">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Add New Insurance Company</h3>
+              <div className="space-y-4">
+                <input 
+                  type="text" 
+                  placeholder="Company Name *" 
+                  value={newProviderName} 
+                  onChange={(e) => setNewProviderName(e.target.value.toUpperCase())} 
+                  className="w-full px-4 py-2 border rounded-lg"
+                />
+                <p className="text-sm text-gray-500">You can add networks when adding plans for this company.</p>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => { setShowAddProviderModal(false); setNewProviderName(''); }} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button 
+                  onClick={() => {
+                    if (!newProviderName.trim()) {
+                      alert('Please enter company name');
+                      return;
+                    }
+                    const newProvider = {
+                      id: `CUSTOM_${Date.now()}`,
+                      name: newProviderName.trim(),
+                      networks: ['MEDNET', 'NEXTCARE', 'NAS', 'Custom Network']
+                    };
+                    setCustomProviders(prev => [...prev, newProvider]);
+                    setShowAddProviderModal(false);
+                    setNewProviderName('');
+                    alert('✅ Company added! You can now add plans for ' + newProvider.name);
+                  }} 
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                >
+                  Add Company
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Manual Plan Modal */}
         {showManualPlanModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full m-4">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Add {MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.name} Plan</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Add {MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.name || customProviders.find(p => p.id === currentProvider)?.name} Plan</h3>
               <div className="space-y-4">
                 <input type="text" placeholder="Plan Name *" value={newManualPlan.planName} onChange={(e) => setNewManualPlan({ ...newManualPlan, planName: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
                 <select value={newManualPlan.network} onChange={(e) => setNewManualPlan({ ...newManualPlan, network: e.target.value })} className="w-full px-4 py-2 border rounded-lg">
                   <option value="">Select Network</option>
-                  {MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.networks.map(network => (
+                  {(MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.networks || customProviders.find(p => p.id === currentProvider)?.networks || []).map(network => (
                     <option key={network} value={network}>{network}</option>
                   ))}
                 </select>
@@ -1983,7 +2072,17 @@ ${consolidatedTable}
                             {displayPlans.map((plan, planIdx) => {
                               const actualRank = results.comparison.findIndex(p => p.id === plan.id) + 1;
                               const benefitsKey = `${member.id}_${plan.id}`;
-                              const hasLocalEdits = localPlanEdits[plan.id] || localBenefitsEdits[plan.id];
+                              const memberPlanKey = `${member.id}_${plan.id}`;
+                              const hasLocalEdits = localPlanEdits[memberPlanKey] || localBenefitsEdits[plan.id];
+                              
+                              // Apply member-specific edits to display
+                              const displayPlan = localPlanEdits[memberPlanKey] ? {
+                                ...plan,
+                                plan: localPlanEdits[memberPlanKey].plan || plan.plan,
+                                network: localPlanEdits[memberPlanKey].network || plan.network,
+                                copay: localPlanEdits[memberPlanKey].copay || plan.copay,
+                                premium: localPlanEdits[memberPlanKey].premium !== undefined ? localPlanEdits[memberPlanKey].premium : plan.premium
+                              } : plan;
                               
                               return (
                                 <React.Fragment key={plan.id}>
@@ -1995,16 +2094,16 @@ ${consolidatedTable}
                                       ) : actualRank}
                                     </td>
                                     <td className="p-2 font-medium">
-                                      {plan.provider}
+                                      {displayPlan.provider}
                                       {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
                                     </td>
                                     <td className="p-2">
-                                      {plan.plan}
+                                      {displayPlan.plan}
                                       {hasLocalEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
                                     </td>
-                                    <td className="p-2">{plan.network}</td>
-                                    <td className="p-2">{plan.copay}</td>
-                                    <td className="p-2 text-right font-semibold text-blue-700">AED {plan.premium.toLocaleString()}</td>
+                                    <td className="p-2">{displayPlan.network}</td>
+                                    <td className="p-2">{displayPlan.copay}</td>
+                                    <td className="p-2 text-right font-semibold text-blue-700">AED {displayPlan.premium?.toLocaleString()}</td>
                                     <td className="p-2 text-center">
                                       <select value={plan.status} onChange={(e) => updatePlanStatus(member.id, plan.id, e.target.value)} className="text-xs px-2 py-1 border rounded">
                                         <option value="none">-</option>
