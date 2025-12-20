@@ -1127,11 +1127,16 @@ export default function InsurancePortal() {
     }
   };
 
-  // Update benefits - NOW SAVES TO LOCALSTORAGE FOR PERSISTENCE
+  // Update benefits - NOW SAVES TO LOCALSTORAGE AND CLOUD FOR PERSISTENCE
   const updateBenefits = async (memberId: number, planId: string) => {
     const key = `${memberId}_${planId}`;
     const updatedBenefits = editingBenefits[key];
     if (!updatedBenefits) return;
+    
+    // Find the plan to check if it's a manual plan
+    const plan = memberResults[memberId]?.comparison.find(p => p.id === planId);
+    const isManualPlan = plan?.isManual;
+    const providerKey = plan?.providerKey;
     
     // Save to localStorage for persistence
     setLocalBenefitsEdits(prev => ({
@@ -1154,7 +1159,29 @@ export default function InsurancePortal() {
       return updated;
     });
     
-    // Also try to save to cloud
+    // If it's a manual plan, update the manual plan object in state and cloud
+    if (isManualPlan && providerKey) {
+      const updatedManualPlans = {
+        ...manualPlans,
+        [providerKey]: manualPlans[providerKey]?.map(p => 
+          p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
+        ) || []
+      };
+      setManualPlans(updatedManualPlans);
+      
+      // Save updated manual plans to cloud
+      try {
+        await fetch('/api/manual-plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plans: updatedManualPlans })
+        });
+      } catch (error) {
+        console.error('Error saving manual plan benefits to cloud:', error);
+      }
+    }
+    
+    // Also save to benefits cloud endpoint
     try {
       await fetch('/api/benefits', {
         method: 'POST',
@@ -1162,7 +1189,7 @@ export default function InsurancePortal() {
         body: JSON.stringify({ planKey: planId, benefits: updatedBenefits })
       });
       setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
-      alert('✅ Benefits saved! Changes will persist after refresh.');
+      alert('✅ Benefits saved! Changes will persist after refresh and sync to all users.');
     } catch (error) {
       console.error('Error saving benefits to cloud:', error);
       alert('✅ Benefits saved locally! Cloud sync may be unavailable.');
@@ -1406,7 +1433,7 @@ export default function InsurancePortal() {
           </tr>
         `).join('')}
         <tr class="row-total">
-          <td class="cell-total-label">${numMembers > 1 ? 'TOTAL Premium (AED) Including (VAT AND BASMAH/ICP)' : 'Annual Premium (AED) Including (VAT AND BASMAH/ICP)'}</td>
+          <td class="cell-total-label">Total Premium Including (BASMAH/ICP + VAT)</td>
           ${selectedPlans.map(plan => `<td class="cell-total-value">${planTotals[plan.id].toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
         </tr>
       </tbody>
@@ -1457,7 +1484,7 @@ export default function InsurancePortal() {
       width: 297mm;
       height: 210mm;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 10px;
+      font-size: 9px;
       line-height: 1.3;
       background: white;
       -webkit-print-color-adjust: exact !important;
@@ -1531,7 +1558,7 @@ export default function InsurancePortal() {
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 9px;
+      font-size: 8px;
       margin-bottom: 6px;
     }
     .main-table th,
@@ -1547,7 +1574,7 @@ export default function InsurancePortal() {
       background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
       color: white;
       font-weight: bold;
-      font-size: 10px;
+      font-size: 9px;
       padding: 6px 5px;
     }
     .col-benefit { text-align: left !important; background: #1e40af !important; }
@@ -1560,19 +1587,19 @@ export default function InsurancePortal() {
       background: #f8fafc;
     }
     .cell-value { 
-      font-size: 9px; 
+      font-size: 8px; 
       text-align: center !important;
       vertical-align: middle !important;
     }
     .cell-detail { 
-      font-size: 8px; 
+      font-size: 7px; 
       line-height: 1.2; 
       text-align: center !important;
       vertical-align: middle !important;
       padding: 3px 4px !important; 
     }
     .cell-small { 
-      font-size: 7.5px; 
+      font-size: 6.5px; 
       line-height: 1.15; 
       text-align: center !important;
       vertical-align: middle !important;
@@ -1580,7 +1607,7 @@ export default function InsurancePortal() {
     .cell-premium { 
       font-weight: 600; 
       color: #059669; 
-      font-size: 10px; 
+      font-size: 9px; 
       text-align: center !important;
       vertical-align: middle !important;
     }
@@ -1597,12 +1624,12 @@ export default function InsurancePortal() {
       font-weight: bold;
       color: #1e40af;
       background: #bfdbfe !important;
-      font-size: 10px;
+      font-size: 9px;
     }
     .cell-total-value {
       font-weight: bold;
       color: #1d4ed8;
-      font-size: 12px;
+      font-size: 11px;
       background: #dbeafe;
       text-align: center !important;
       vertical-align: middle !important;
