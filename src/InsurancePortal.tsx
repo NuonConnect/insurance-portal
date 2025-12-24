@@ -635,7 +635,15 @@ export default function InsurancePortal() {
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.plans) {
-            setManualPlans(data.plans);
+            // Ensure each plan has benefits object
+            const plansWithBenefits: { [key: string]: any[] } = {};
+            Object.keys(data.plans).forEach(providerKey => {
+              plansWithBenefits[providerKey] = data.plans[providerKey].map((plan: any) => ({
+                ...plan,
+                benefits: plan.benefits || defaultBenefits
+              }));
+            });
+            setManualPlans(plansWithBenefits);
           }
         }
       } catch (error) {
@@ -684,6 +692,11 @@ export default function InsurancePortal() {
       return { ...localBenefitsEdits[planId] };
     }
     
+    // Check cloud benefits by planId (for manual plans)
+    if (planId && cloudBenefits[planId]) {
+      return { ...cloudBenefits[planId] };
+    }
+    
     const planKey = `${provider}_${planName}`;
     if (cloudBenefits[planKey]) return { ...cloudBenefits[planKey] };
     if (PLAN_BENEFITS[planKey]) return { ...PLAN_BENEFITS[planKey] };
@@ -704,7 +717,8 @@ export default function InsurancePortal() {
     // Use member-specific key if memberId provided, otherwise fall back to plan.id only
     const memberPlanKey = memberId !== undefined ? `${memberId}_${plan.id}` : plan.id;
     const edits = localPlanEdits[memberPlanKey];
-    const benefitsEdits = localBenefitsEdits[plan.id];
+    // Check local edits first, then cloud benefits
+    const benefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
     
     if (!edits && !benefitsEdits) return plan;
     
@@ -964,7 +978,18 @@ export default function InsurancePortal() {
       Object.keys(manualPlans).forEach(providerKey => {
         if (manualPlans[providerKey]) {
           manualPlans[providerKey].forEach(plan => {
-            let manualPlan = { ...plan, selected: false, status: 'none' };
+            // Priority: 1. cloudBenefits (most up-to-date from API)
+            //           2. plan.benefits (embedded in manual plan from cloud)
+            //           3. defaultBenefits (fallback)
+            const planBenefits = cloudBenefits[plan.id] || plan.benefits || { ...defaultBenefits };
+            let manualPlan: InsurancePlan = { 
+              ...plan, 
+              selected: false, 
+              status: 'none' as const,
+              benefits: { ...defaultBenefits, ...planBenefits },
+              isManual: true,
+              providerKey: providerKey
+            };
             manualPlan = applyLocalEdits(manualPlan);
             memberPlans.push(manualPlan);
           });
@@ -1131,8 +1156,8 @@ export default function InsurancePortal() {
     if (newShowState) {
       const plan = memberResults[memberId].comparison.find(p => p.id === planId);
       if (plan) {
-        // Use local edits if available, otherwise use plan benefits
-        const existingBenefits = localBenefitsEdits[planId] || plan.benefits;
+        // Priority: localBenefitsEdits > cloudBenefits > plan.benefits
+        const existingBenefits = localBenefitsEdits[planId] || cloudBenefits[planId] || plan.benefits;
         // Ensure all new fields have defaults
         const benefitsToEdit = {
           ...defaultBenefits,
@@ -1180,37 +1205,39 @@ export default function InsurancePortal() {
       return updated;
     });
     
+    // Update cloudBenefits state immediately
+    setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
+    
     // If it's a manual plan, update the manual plan object in state and cloud
     if (isManualPlan && providerKey) {
-      const updatedManualPlans = {
-        ...manualPlans,
-        [providerKey]: manualPlans[providerKey]?.map(p => 
-          p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
-        ) || []
-      };
-      setManualPlans(updatedManualPlans);
-      
-      // Save updated manual plans to cloud
-      try {
-        await fetch('/api/manual-plans', {
+      // Use functional update to get latest manualPlans state
+      setManualPlans(prevManualPlans => {
+        const updatedManualPlans = {
+          ...prevManualPlans,
+          [providerKey]: prevManualPlans[providerKey]?.map(p => 
+            p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
+          ) || []
+        };
+        
+        // Save updated manual plans to cloud (async, don't await inside setState)
+        fetch('/api/manual-plans', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ plans: updatedManualPlans })
-        });
-      } catch (error) {
-        console.error('Error saving manual plan benefits to cloud:', error);
-      }
+        }).catch(error => console.error('Error saving manual plan benefits to cloud:', error));
+        
+        return updatedManualPlans;
+      });
     }
     
-    // Also save to benefits cloud endpoint
+    // Also save to benefits cloud endpoint (for all plans)
     try {
       await fetch('/api/benefits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planKey: planId, benefits: updatedBenefits })
       });
-      setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
-      alert('✅ Benefits saved! Changes will persist after refresh and sync to all users.');
+      alert('✅ Benefits saved! Changes will sync to all users.');
     } catch (error) {
       console.error('Error saving benefits to cloud:', error);
       alert('✅ Benefits saved locally! Cloud sync may be unavailable.');
