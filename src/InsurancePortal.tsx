@@ -451,9 +451,29 @@ const calculateAge = (dob: string): number => {
   const birthDate = new Date(dob);
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
+  
+  // Standard age calculation
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
     age--;
   }
+  
+  // Insurance age calculation: if past 6 months from last birthday, add 1 year
+  // Calculate months since last birthday
+  let monthsSinceLastBirthday = today.getMonth() - birthDate.getMonth();
+  if (monthsSinceLastBirthday < 0) {
+    monthsSinceLastBirthday += 12;
+  }
+  // Adjust for day of month
+  if (today.getDate() < birthDate.getDate()) {
+    monthsSinceLastBirthday--;
+    if (monthsSinceLastBirthday < 0) monthsSinceLastBirthday += 12;
+  }
+  
+  // If more than 6 months since birthday, consider next age
+  if (monthsSinceLastBirthday >= 6) {
+    age++;
+  }
+  
   return age;
 };
 
@@ -540,9 +560,10 @@ export default function InsurancePortal() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   // SEARCH FILTERS
-  const [providerSearch, setProviderSearch] = useState('');
-  const [planSearch, setPlanSearch] = useState('');
-  const [networkSearch, setNetworkSearch] = useState('');
+  const [providerSearch, setProviderSearch] = useState(''); // Insurance Name
+  const [planSearch, setPlanSearch] = useState(''); // Network (was Plan)
+  const [networkSearch, setNetworkSearch] = useState(''); // TPA
+  const [copaySearch, setCopaySearch] = useState(''); // Copay filter
 
   // Load benefits and history
   useEffect(() => {
@@ -1258,7 +1279,9 @@ export default function InsurancePortal() {
         plan.plan.toLowerCase().includes(planSearch.toLowerCase());
       const networkMatch = !networkSearch || 
         plan.network.toLowerCase().includes(networkSearch.toLowerCase());
-      return providerMatch && planMatch && networkMatch;
+      const copayMatch = !copaySearch || 
+        plan.copay.toLowerCase().includes(copaySearch.toLowerCase());
+      return providerMatch && planMatch && networkMatch && copayMatch;
     });
   };
 
@@ -1293,6 +1316,17 @@ export default function InsurancePortal() {
       });
     });
     return Array.from(networks).sort();
+  };
+
+  // Get unique copays for suggestions
+  const getUniqueCopays = (): string[] => {
+    const copays = new Set<string>();
+    Object.keys(memberResults).forEach(key => {
+      memberResults[parseInt(key)].comparison.forEach(plan => {
+        copays.add(plan.copay);
+      });
+    });
+    return Array.from(copays).sort();
   };
 
   // ============================================================================
@@ -1345,20 +1379,35 @@ export default function InsurancePortal() {
       firstMemberResults.comparison.find(p => p.id === planId)
     ).filter(Boolean) as InsurancePlan[];
     
-    // Sort by premium (lowest first)
-    selectedPlans.sort((a, b) => a.premium - b.premium);
+    // Sort: renewals first, then by premium (lowest first)
+    selectedPlans.sort((a, b) => {
+      // Renewals come first
+      if (a.status === 'renewal' && b.status !== 'renewal') return -1;
+      if (b.status === 'renewal' && a.status !== 'renewal') return 1;
+      // Then sort by premium
+      return a.premium - b.premium;
+    });
 
     const numPlans = selectedPlans.length;
     const numMembers = allMembersWithSelections.length;
 
-    // Calculate totals per plan (sum across all members)
+    // Calculate totals per plan (sum across all members) with BASMAH/ICP + VAT
     const planTotals: { [planId: string]: number } = {};
+    const isDubai = sharedSettings.location === 'Dubai';
+    const basmaFee = isDubai ? 37 : 24; // Dubai = 37, Northern Emirates = 24
+    const vatRate = 0.05; // 5% VAT
+    
     selectedPlans.forEach(plan => {
       planTotals[plan.id] = 0;
       allMembersWithSelections.forEach(m => {
         const memberResult = memberResults[m.member.id];
         const memberPlan = memberResult?.comparison.find(p => p.id === plan.id);
-        if (memberPlan) planTotals[plan.id] += memberPlan.premium;
+        if (memberPlan) {
+          // Formula: (premium + BASMAH/ICP) * (1 + VAT)
+          const premiumWithBasma = memberPlan.premium + basmaFee;
+          const premiumWithVat = premiumWithBasma * (1 + vatRate);
+          planTotals[plan.id] += premiumWithVat;
+        }
       });
     });
 
@@ -1428,7 +1477,11 @@ export default function InsurancePortal() {
             ${selectedPlans.map(plan => {
               const memberResult = memberResults[m.member.id];
               const memberPlan = memberResult?.comparison.find(p => p.id === plan.id);
-              return `<td class="cell-premium">${memberPlan ? memberPlan.premium.toLocaleString('en-AE', { minimumFractionDigits: 2 }) : '-'}</td>`;
+              if (memberPlan) {
+                const premiumWithBasmaVat = (memberPlan.premium + basmaFee) * (1 + vatRate);
+                return `<td class="cell-premium">${premiumWithBasmaVat.toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`;
+              }
+              return `<td class="cell-premium">-</td>`;
             }).join('')}
           </tr>
         `).join('')}
@@ -1967,15 +2020,15 @@ ${consolidatedTable}
               <span><strong>👥</strong> {familyMembers.length} members</span>
             </div>
 
-            {/* SEARCH FILTERS FOR PROVIDER, PLAN AND NETWORK */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 p-4 bg-gray-50 rounded-lg border">
+            {/* SEARCH FILTERS FOR INSURER, TPA, NETWORK AND COPAY */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4 p-4 bg-gray-50 rounded-lg border">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🏢 Provider</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🏢 Insurer Name</label>
                 <input
                   type="text"
                   value={providerSearch}
                   onChange={(e) => setProviderSearch(e.target.value)}
-                  placeholder="Filter by provider..."
+                  placeholder="Filter by insurer..."
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   list="provider-suggestions"
                 />
@@ -1984,12 +2037,26 @@ ${consolidatedTable}
                 </datalist>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">📋 Plan</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🌐 TPA</label>
+                <input
+                  type="text"
+                  value={networkSearch}
+                  onChange={(e) => setNetworkSearch(e.target.value)}
+                  placeholder="Filter by TPA..."
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  list="network-suggestions"
+                />
+                <datalist id="network-suggestions">
+                  {getUniqueNetworks().map(n => <option key={n} value={n} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">📋 Network</label>
                 <input
                   type="text"
                   value={planSearch}
                   onChange={(e) => setPlanSearch(e.target.value)}
-                  placeholder="Filter by plan name..."
+                  placeholder="Filter by network..."
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   list="plan-suggestions"
                 />
@@ -1998,22 +2065,22 @@ ${consolidatedTable}
                 </datalist>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🌐 Network</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">💵 Copay</label>
                 <input
                   type="text"
-                  value={networkSearch}
-                  onChange={(e) => setNetworkSearch(e.target.value)}
-                  placeholder="Filter by network..."
+                  value={copaySearch}
+                  onChange={(e) => setCopaySearch(e.target.value)}
+                  placeholder="Filter by copay..."
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  list="network-suggestions"
+                  list="copay-suggestions"
                 />
-                <datalist id="network-suggestions">
-                  {getUniqueNetworks().map(n => <option key={n} value={n} />)}
+                <datalist id="copay-suggestions">
+                  {getUniqueCopays().map(c => <option key={c} value={c} />)}
                 </datalist>
               </div>
               <div className="flex items-end">
                 <button
-                  onClick={() => { setProviderSearch(''); setPlanSearch(''); setNetworkSearch(''); }}
+                  onClick={() => { setProviderSearch(''); setPlanSearch(''); setNetworkSearch(''); setCopaySearch(''); }}
                   className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg"
                 >
                   Clear Filters
@@ -2086,8 +2153,8 @@ ${consolidatedTable}
                             <tr>
                               <th className="p-2 text-left w-10">✓</th>
                               <th className="p-2 text-left w-10">#</th>
-                              <th className="p-2 text-left">Provider</th>
-                              <th className="p-2 text-left">Plan</th>
+                              <th className="p-2 text-left">Insurer Name</th>
+                              <th className="p-2 text-left">TPA</th>
                               <th className="p-2 text-left">Network</th>
                               <th className="p-2 text-left">Copay</th>
                               <th className="p-2 text-right">Premium</th>
@@ -2126,11 +2193,11 @@ ${consolidatedTable}
                                       {displayPlan.provider}
                                       {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
                                     </td>
+                                    <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">
                                       {displayPlan.plan}
                                       {hasLocalEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
                                     </td>
-                                    <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">{displayPlan.copay}</td>
                                     <td className="p-2 text-right font-semibold text-blue-700">AED {displayPlan.premium?.toLocaleString()}</td>
                                     <td className="p-2 text-center">
