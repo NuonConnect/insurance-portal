@@ -107,6 +107,30 @@ const defaultBenefits: PlanBenefits = {
   consultation: ''
 };
 
+// MEDNET Benefits Template (Standard benefits for all MEDNET networks)
+const MEDNET_BENEFITS: PlanBenefits = {
+  areaOfCover: 'Worldwide',
+  annualLimit: 'AED 1 Million',
+  network: 'MEDNET Network (OP Access to Clinics only, 10PM-8AM Hospital access)',
+  consultationDeductible: '20% max AED 50 per consultation',
+  prescribedDrugs: 'Covered with 0% copay per invoice',
+  diagnostics: 'Covered with 0% copay per invoice (X-Ray, MRI, CT-Scan, Ultrasound, Endoscopy)',
+  preexistingCondition: 'Declared conditions covered with sub limit AED 150,000. Undeclared not covered during policy period.',
+  physiotherapy: 'Covered with 0% copay up to 15 sessions per member per year (Subject to Prior Approval)',
+  outpatientMaternity: '10% co-payment applicable on all Maternity treatments including consultations',
+  inpatientMaternity: 'Normal Delivery up to AED 10,000, C-Section up to AED 10,000, Emergency up to AED 150,000 (10% copay)',
+  dental: { enabled: true, value: 'Covered with 20% copay up to AED 3,500 (Consultation, X-Ray, Scaling, Extraction, Fillings, Root Canal, Crown)' },
+  optical: { enabled: false, value: 'Emergency cases only' },
+  alternativeMedicine: { enabled: true, value: 'Covered on reimbursement up to AED 1,600 (Osteopathy, Chiropractic, Homeopathy, Acupuncture, Ayurveda, Herbal)' },
+  inpatient: 'Covered with prior approval. Private room. ICU and Coronary care covered.',
+  outpatient: 'MEDNET Network - Clinics only during day, Hospitals 10PM-8AM',
+  emergency: 'Covered 100% of actual cost within and outside network',
+  maternity: '10% copay. Normal/C-Section up to AED 10,000 each. Emergency up to AED 150,000',
+  preexisting: { type: 'underwriting', value: 'Declared conditions covered up to AED 150,000. Undeclared not covered.' },
+  pharmacyLimit: 'Covered with 0% copay up to Annual Benefit Limit',
+  consultation: '20% copay max AED 50. Follow-up within 7 days with same doctor - No copay'
+};
+
 // ============================================================================
 // PLAN-SPECIFIC BENEFITS DATABASE
 // ============================================================================
@@ -425,22 +449,22 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
 
 // Manual providers
 const MANUAL_PROVIDERS = [
-  { id: 'AL_SAGR', name: 'AL SAGR NATIONAL', networks: ['MEDNET', 'NEXTCARE', 'NAS'] },
-  { id: 'CIGNA', name: 'CIGNA', networks: ['CIGNA Network'] },
+  { id: 'AL_SAGR', name: 'AL SAGR NATIONAL', networks: ['NEXTCARE', 'MEDNET', 'NAS'] },
+  { id: 'CIGNA', name: 'CIGNA', networks: ['Regional', 'International', 'International Plus'] },
   { id: 'BUPA', name: 'BUPA', networks: ['BUPA Network'] },
   { id: 'HENSMERKUR', name: 'HENSMERKUR', networks: ['HENSMERKUR Network'] },
-  { id: 'TAKAFUL_EMARAT_MANUAL', name: 'TAKAFUL EMARAT', networks: ['MEDNET', 'NEXTCARE', 'NAS', 'AAFIYA', 'ECARE', 'NE BASIC PLAN'] },
+  { id: 'TAKAFUL_EMARAT_MANUAL', name: 'TAKAFUL EMARAT', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN', 'AAFIYA APN', 'AAFIYA APN PLUS', 'AAFIYA ESSENTIAL', 'NE BASIC IP ONLY', 'NE BASIC PLAN', 'NE BASIC ENHANCED', 'NE BASIC ENHANCED PLUS', 'ECARE BLUE 1', 'ECARE BLUE 2', 'ECARE BLUE 3', 'ECARE BLUE 4'] },
   { id: 'MEDGULF', name: 'MEDGULF', networks: ['MEDNET', 'NEXTCARE', 'NAS'] },
-  { id: 'LIVA', name: 'LIVA', networks: ['MEDNET', 'NAS', 'Inayah'] },
-  { id: 'SUKOON', name: 'SUKOON', networks: ['SUKOON Network', 'SAFE', 'HOME', 'HOMELITE', 'PRO', 'PRIME', 'MAX'] },
-  { id: 'DIC', name: 'DIC', networks: ['MEDNET', 'DUBAICARE'] },
-  { id: 'ORIENT_MANUAL', name: 'ORIENT', networks: ['Orient/Nextcare', 'PCPC', 'RN3', 'NEXTCARE', 'MEDNET'] },
-  { id: 'ADAMJEE', name: 'ADAMJEE', networks: ['MEDNET', 'NEXTCARE', 'NAS'] },
-  { id: 'FIDELITY_MANUAL', name: 'FIDELITY', networks: ['AAFIA TPA', 'MEDNET', 'NAS', 'NEXTCARE'] },
-  { id: 'DUBAI_INSURANCE', name: 'DUBAI INSURANCE', networks: ['MEDNET', 'NEXTCARE', 'NAS', 'DUBAICARE'] },
-  { id: 'RAK', name: 'RAK', networks: ['MEDNET', 'NEXTCARE', 'NAS'] },
-  { id: 'WATANIA_TAKAFUL_MANUAL', name: 'WATANIA TAKAFUL', networks: ['NAS/Mednet TPA', 'MEDNET', 'NAS'] },
-  { id: 'QATAR_INSURANCE', name: 'QATAR INSURANCE', networks: ['MEDNET', 'NEXTCARE', 'NAS'] }
+  { id: 'LIVA', name: 'LIVA', networks: ['NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'INAYAH'] },
+  { id: 'SUKOON', name: 'SUKOON', networks: ['SAFE', 'HOME', 'HOMELITE', 'PRO', 'PRIME', 'MAX'] },
+  { id: 'DIC', name: 'DIC', networks: ['ISON', 'MEDNET', 'DUBAICARE'] },
+  { id: 'ORIENT_MANUAL', name: 'ORIENT', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] },
+  { id: 'ADAMJEE', name: 'ADAMJEE', networks: ['MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
+  { id: 'FIDELITY_MANUAL', name: 'FIDELITY', networks: ['NEXTCARE PCP RN3', 'NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
+  { id: 'DUBAI_INSURANCE', name: 'DUBAI INSURANCE', networks: ['DUBAICARE N5', 'DUBAICARE N3', 'DUBAICARE N2', 'DUBAICARE EXCL N2', 'DUBAICARE N1', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] },
+  { id: 'RAK', name: 'RAK', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
+  { id: 'WATANIA_TAKAFUL_MANUAL', name: 'WATANIA TAKAFUL', networks: ['MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
+  { id: 'QATAR_INSURANCE', name: 'QATAR INSURANCE', networks: ['NAS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] }
 ];
 
 // ============================================================================
@@ -783,6 +807,11 @@ export default function InsurancePortal() {
       return;
     }
     const providerName = MANUAL_PROVIDERS.find(p => p.id === currentProvider)?.name || customProviders.find(p => p.id === currentProvider)?.name || currentProvider;
+    
+    // Use MEDNET benefits template if network starts with MEDNET
+    const isMednetNetwork = (newManualPlan.network || '').toUpperCase().startsWith('MEDNET');
+    const planBenefits = isMednetNetwork ? { ...MEDNET_BENEFITS } : { ...defaultBenefits };
+    
     const plan: InsurancePlan = {
       id: `${currentProvider}_${Date.now()}`,
       provider: providerName,
@@ -792,7 +821,7 @@ export default function InsurancePortal() {
       premium: parseFloat(newManualPlan.premium),
       selected: false,
       status: 'none' as const,
-      benefits: { ...defaultBenefits },
+      benefits: planBenefits,
       isManual: true,
       providerKey: currentProvider
     };
@@ -1898,13 +1927,10 @@ ${consolidatedTable}
             
             {/* Show local edits info */}
             {(Object.keys(localPlanEdits).length > 0 || Object.keys(localBenefitsEdits).length > 0) && (
-              <div className="mt-4 p-3 bg-green-50 rounded-lg flex justify-between items-center border border-green-200">
+              <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
                 <span className="text-sm text-green-700">
                   💾 {Object.keys(localPlanEdits).length} plan edits and {Object.keys(localBenefitsEdits).length} benefits edits saved locally
                 </span>
-                <button onClick={clearAllLocalEdits} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm">
-                  Clear All Edits
-                </button>
               </div>
             )}
           </div>
