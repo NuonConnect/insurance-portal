@@ -1932,6 +1932,8 @@ export default function InsurancePortal() {
     }
 
     setIsGenerating(true);
+    
+    try {
     const today = new Date().toLocaleDateString('en-GB');
     const clientName = familyMembers[0]?.name || 'Family';
     const fileName = `NSIB_Report_${clientName}_${today.replace(/\//g, '-')}`;
@@ -1958,11 +1960,16 @@ export default function InsurancePortal() {
       return;
     }
 
-    // Get the plan details from the first member (benefits are same for all)
-    const firstMemberResults = memberResults[allMembersWithSelections[0].member.id];
-    const selectedPlans = Array.from(allSelectedPlanIds).map(planId => 
-      firstMemberResults.comparison.find(p => p.id === planId)
-    ).filter(Boolean) as InsurancePlan[];
+    // Get the plan details - search across ALL members to find the plan
+    const selectedPlans = Array.from(allSelectedPlanIds).map(planId => {
+      // Try to find the plan in any member's results
+      for (const m of allMembersWithSelections) {
+        const memberResult = memberResults[m.member.id];
+        const plan = memberResult?.comparison.find(p => p.id === planId);
+        if (plan) return plan;
+      }
+      return null;
+    }).filter(Boolean) as InsurancePlan[];
     
     // Sort: renewals first, then by premium (lowest first)
     selectedPlans.sort((a, b) => {
@@ -2042,20 +2049,20 @@ export default function InsurancePortal() {
         </tr>
       </thead>
       <tbody>
-        <tr><td class="cell-label">Plan Name</td>${selectedPlans.map(p => `<td class="cell-value">${p.plan}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Area of Cover</td>${selectedPlans.map(p => `<td class="cell-value">${p.benefits.areaOfCover || '-'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">Annual Limit</td>${selectedPlans.map(p => `<td class="cell-value">${p.benefits.annualLimit || '-'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Network</td>${selectedPlans.map(p => `<td class="cell-value">${p.benefits.network || p.network || '-'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">Consultation Deductible</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.consultationDeductible || '-'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Prescribed Drugs & Medicines</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.prescribedDrugs || '-'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">Diagnostics</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.diagnostics || '-'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Pre-existing Condition</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.preexistingCondition || '-'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">Physiotherapy</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.physiotherapy || '-'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Out-patient Maternity</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.outpatientMaternity || '-'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">In-patient Maternity</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.inpatientMaternity || '-'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Dental</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.dental?.enabled ? (p.benefits.dental.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">Optical</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.optical?.enabled ? (p.benefits.optical.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Alternative Medicine</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits.alternativeMedicine?.enabled ? (p.benefits.alternativeMedicine.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">Plan Name</td>${selectedPlans.map(p => `<td class="cell-value">${p.plan || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Area of Cover</td>${selectedPlans.map(p => `<td class="cell-value">${p.benefits?.areaOfCover || '-'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">Annual Limit</td>${selectedPlans.map(p => `<td class="cell-value">${p.benefits?.annualLimit || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Network</td>${selectedPlans.map(p => `<td class="cell-value">${p.benefits?.network || p.network || '-'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">Consultation Deductible</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.consultationDeductible || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Prescribed Drugs & Medicines</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.prescribedDrugs || '-'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">Diagnostics</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.diagnostics || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Pre-existing Condition</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.preexistingCondition || '-'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">Physiotherapy</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.physiotherapy || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Out-patient Maternity</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.outpatientMaternity || '-'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">In-patient Maternity</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.inpatientMaternity || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Dental</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.dental?.enabled ? (p.benefits.dental.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
+        <tr><td class="cell-label">Optical</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.optical?.enabled ? (p.benefits.optical.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Alternative Medicine</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.alternativeMedicine?.enabled ? (p.benefits.alternativeMedicine.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
         ${allMembersWithSelections.map((m, idx) => `
           <tr class="row-member">
             <td class="cell-label">${m.member.name || m.member.relationship} (${m.age}y)</td>
@@ -2072,7 +2079,7 @@ export default function InsurancePortal() {
         `).join('')}
         <tr class="row-total">
           <td class="cell-total-label">Total Premium Including (BASMAH/ICP + VAT)</td>
-          ${selectedPlans.map(plan => `<td class="cell-total-value">${planTotals[plan.id].toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
+          ${selectedPlans.map(plan => `<td class="cell-total-value">${(planTotals[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
         </tr>
       </tbody>
     </table>
@@ -2345,20 +2352,46 @@ ${consolidatedTable}
 </body>
 </html>`;
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(reportHTML);
-      printWindow.document.close();
+    // Use iframe approach - doesn't get blocked by browsers
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    
+    const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(reportHTML);
+      iframeDoc.close();
+      
+      // Wait for content and images to load then print
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        // Remove iframe after printing dialog closes
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 1000);
+      }, 800);
     }
 
-    // Upload to cloud
-    try {
-      await fetch('/api/upload-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ htmlContent: reportHTML, fileName, metadata: { clientName, location: sharedSettings.location } })
-      });
-    } catch (e) { console.error('Cloud upload failed:', e); }
+    // Upload to cloud (non-blocking)
+    fetch('/api/upload-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ htmlContent: reportHTML, fileName, metadata: { clientName, location: sharedSettings.location } })
+    }).catch(e => console.error('Cloud upload failed:', e));
+    
+    } catch (generateError) {
+      console.error('Report generation error:', generateError);
+      alert('Error generating report: ' + (generateError instanceof Error ? generateError.message : 'Unknown error'));
+    }
     
     setIsGenerating(false);
   };
