@@ -1160,9 +1160,21 @@ export default function InsurancePortal() {
     // Load local history
     try {
       const history = localStorage.getItem(STORAGE_KEYS.REPORT_HISTORY);
-      if (history) setReportHistory(JSON.parse(history));
+      if (history) {
+        const parsed = JSON.parse(history);
+        // Keep only last 10 entries to prevent quota issues
+        if (parsed.length > 10) {
+          const trimmed = parsed.slice(-10);
+          localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(trimmed));
+          setReportHistory(trimmed);
+        } else {
+          setReportHistory(parsed);
+        }
+      }
     } catch (e) {
       console.error('Error loading history:', e);
+      // Clear corrupted history
+      localStorage.removeItem(STORAGE_KEYS.REPORT_HISTORY);
     }
   }, []);
 
@@ -1817,19 +1829,57 @@ export default function InsurancePortal() {
 
   // Save to report history
   const saveToReportHistory = (reportName: string) => {
-    const reportState = {
-      id: Date.now(),
-      name: reportName,
-      timestamp: new Date().toISOString(),
-      familyMembers,
-      sharedSettings,
-      memberResults,
-      advisorComment,
-      manualPlans
-    };
-    const history = [...reportHistory, reportState];
-    localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
-    setReportHistory(history);
+    try {
+      // Store only essential data - selected plans only, not full comparison
+      const minimalMemberResults: { [key: number]: any } = {};
+      Object.keys(memberResults).forEach(key => {
+        const memberId = parseInt(key);
+        const result = memberResults[memberId];
+        minimalMemberResults[memberId] = {
+          age: result.age,
+          comparison: result.comparison.filter(p => p.selected).map(p => ({
+            id: p.id,
+            provider: p.provider,
+            plan: p.plan,
+            network: p.network,
+            copay: p.copay,
+            premium: p.premium,
+            selected: p.selected,
+            status: p.status
+          }))
+        };
+      });
+
+      const reportState = {
+        id: Date.now(),
+        name: reportName,
+        timestamp: new Date().toISOString(),
+        familyMembers: familyMembers.map(m => ({ id: m.id, name: m.name, dob: m.dob, gender: m.gender, relationship: m.relationship, sponsorship: m.sponsorship })),
+        sharedSettings,
+        memberResults: minimalMemberResults,
+        advisorComment
+      };
+      
+      // Keep only last 10 reports to prevent quota issues
+      let history = [...reportHistory, reportState];
+      if (history.length > 10) {
+        history = history.slice(-10);
+      }
+      
+      localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
+      setReportHistory(history);
+    } catch (e) {
+      console.error('Failed to save report history:', e);
+      // If quota exceeded, clear old history and try again
+      if (e instanceof Error && e.name === 'QuotaExceededError') {
+        try {
+          localStorage.removeItem(STORAGE_KEYS.REPORT_HISTORY);
+          setReportHistory([]);
+        } catch (clearError) {
+          console.error('Failed to clear history:', clearError);
+        }
+      }
+    }
   };
 
   // Load from history
@@ -1838,21 +1888,31 @@ export default function InsurancePortal() {
     if (!report) return;
     setFamilyMembers(report.familyMembers);
     setSharedSettings(report.sharedSettings);
-    setMemberResults(report.memberResults);
+    // Note: memberResults from history only contains selected plans summary
+    // User should re-search to get full comparison data
+    setMemberResults(report.memberResults || {});
     setAdvisorComment(report.advisorComment);
     setManualPlans(report.manualPlans || {});
     const initialExpanded: { [key: number]: boolean } = {};
     report.familyMembers.forEach((m: FamilyMember) => { initialExpanded[m.id] = true; });
     setExpandedMembers(initialExpanded);
     setShowReportHistory(false);
+    // Notify user to re-search for full data
+    if (Object.keys(report.memberResults || {}).length > 0) {
+      alert('Report loaded! Click "Search Plans" to see full comparison results.');
+    }
   };
 
   // Delete from history
   const deleteReportFromHistory = (reportId: number) => {
     if (!window.confirm('Delete this report from history?')) return;
-    const history = reportHistory.filter(r => r.id !== reportId);
-    localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
-    setReportHistory(history);
+    try {
+      const history = reportHistory.filter(r => r.id !== reportId);
+      localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
+      setReportHistory(history);
+    } catch (e) {
+      console.error('Failed to delete from history:', e);
+    }
   };
 
   // Filter plans based on search
