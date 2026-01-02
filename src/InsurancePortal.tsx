@@ -16,6 +16,7 @@ interface FamilyMember {
   gender: 'Male' | 'Female';
   sponsorship: string;
   relationship: string;
+  maternityEnabled: boolean;
 }
 
 interface PlanBenefits {
@@ -131,27 +132,27 @@ const MEDNET_BENEFITS: PlanBenefits = {
   consultation: '20% copay max AED 50. Follow-up within 7 days with same doctor - No copay'
 };
 
-// NEXTCARE Benefits Template (Based on Takaful Emarat Silver PDF - SilkRoad style)
+// NEXTCARE Benefits Template (Based on Orient TOB-Dubai PDF - March 2025)
 const NEXTCARE_BENEFITS: PlanBenefits = {
   areaOfCover: 'Worldwide',
   annualLimit: 'AED 1 Million',
-  network: 'NEXTCARE Network (OP Access to Clinics only, 10PM-8AM Hospital access)',
-  consultationDeductible: '20% max AED 50 per consultation (No copay for follow-up within 7 days)',
-  prescribedDrugs: 'Covered with 0% copay per invoice',
-  diagnostics: 'Covered with 0% copay per invoice (X-Ray, MRI, CT-Scan, Ultrasound, Endoscopy)',
-  preexistingCondition: 'Declared conditions covered with sub limit AED 150,000. Undeclared not covered during policy period.',
-  physiotherapy: 'Covered with 0% copay up to 15 sessions per member per year (Subject to Prior Approval)',
-  outpatientMaternity: '10% co-payment applicable on all Maternity treatments including consultations',
-  inpatientMaternity: 'Normal Delivery up to AED 10,000, C-Section up to AED 10,000, Emergency up to AED 150,000 (10% copay)',
-  dental: { enabled: true, value: 'Covered with 20% copay up to AED 3,500 (Consultation, X-Ray, Scaling, Extraction, Fillings, Root Canal, Crown)' },
-  optical: { enabled: false, value: 'Emergency cases only' },
-  alternativeMedicine: { enabled: true, value: 'Covered on reimbursement up to AED 1,600 (Osteopathy, Chiropractic, Homeopathy, Acupuncture, Ayurveda, Herbal)' },
-  inpatient: 'Covered with prior approval. Private room. ICU and Coronary care covered.',
-  outpatient: 'NEXTCARE Network - Clinics only during day, Hospitals 10PM-8AM',
-  emergency: 'Covered 100% of actual cost within and outside network',
-  maternity: '10% copay. Normal/C-Section up to AED 10,000 each. Emergency up to AED 150,000',
+  network: 'NEXTCARE Network (OP restricted to Clinics for different network)',
+  consultationDeductible: '20% max AED 50 per consultation (No copay for follow-up within 7 days with same doctor)',
+  prescribedDrugs: 'Covered up to AED 5,000-15,000 subject to 15% Co-Insurance',
+  diagnostics: 'Covered subject to 10% Co-pay (X-Ray, MRI, CT-Scan, Ultrasound, Endoscopy)',
+  preexistingCondition: 'Declared conditions covered up to AED 150,000. Subject to MAF. Undeclared not covered during policy period.',
+  physiotherapy: '8-20 sessions per member per annum (Subject to Pre-approval)',
+  outpatientMaternity: '10% coinsurance, max 10-15 visits and 4-8 ante-natal ultrasound scans',
+  inpatientMaternity: 'Up to AED 10,000-20,000 (10% copay). Emergency covered up to Annual Limit.',
+  dental: { enabled: true, value: 'Covered up to AED 500-3,000 subject to 20-30% Co-pay (Consultation, X-Ray, Scaling, Extraction, Fillings, Root Canal)' },
+  optical: { enabled: true, value: 'Covered up to AED 1,000-1,500 subject to 20% Co-pay (Frames, Lenses, Contact Lenses)' },
+  alternativeMedicine: { enabled: true, value: 'Covered up to AED 2,500 subject to 20% copay on reimbursement (Ayurveda, Chiropractic, Chinese Medicine, Homeopathy)' },
+  inpatient: 'Covered with prior approval. Private/Semi-Private room. ICU covered.',
+  outpatient: 'NEXTCARE Network - Direct billing available',
+  emergency: 'Covered. Ambulance services covered.',
+  maternity: '10% copay. Normal/C-Section up to AED 10,000-20,000. Emergency up to Annual Limit.',
   preexisting: { type: 'underwriting', value: 'Declared conditions covered up to AED 150,000. Undeclared not covered.' },
-  pharmacyLimit: 'Covered with 0% copay up to Annual Benefit Limit',
+  pharmacyLimit: 'Covered up to AED 5,000-15,000 subject to 15% Co-Insurance',
   consultation: '20% copay max AED 50. Follow-up within 7 days with same doctor - No copay'
 };
 
@@ -1017,7 +1018,7 @@ const findAgeBand = (age: number, provider: string, plan: string): string | null
 export default function InsurancePortal() {
   // Family members
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([
-    { id: 1, name: '', dob: '', gender: 'Male', sponsorship: 'Principal', relationship: 'Self' }
+    { id: 1, name: '', dob: '', gender: 'Male', sponsorship: 'Principal', relationship: 'Self', maternityEnabled: false }
   ]);
   
   // Shared settings
@@ -1265,18 +1266,18 @@ export default function InsurancePortal() {
   };
 
   // Auto-update relationship when DOB changes
-  const updateFamilyMember = (id: number, field: string, value: string) => {
+  const updateFamilyMember = (id: number, field: string, value: string | boolean) => {
     setFamilyMembers(prev => prev.map(m => {
       if (m.id !== id) return m;
       
       const updated = { ...m, [field]: value };
       
       // Auto-update relationship based on age
-      if (field === 'dob' && value) {
+      if (field === 'dob' && typeof value === 'string' && value) {
         const age = calculateAge(value);
         updated.relationship = getAutoRelationship(age, updated.sponsorship);
       }
-      if (field === 'sponsorship') {
+      if (field === 'sponsorship' && typeof value === 'string') {
         if (updated.dob) {
           const age = calculateAge(updated.dob);
           updated.relationship = getAutoRelationship(age, value);
@@ -1295,7 +1296,8 @@ export default function InsurancePortal() {
       dob: '',
       gender: 'Male',
       sponsorship: 'Dependent',
-      relationship: 'Other'
+      relationship: 'Other',
+      maternityEnabled: false
     }]);
   };
 
@@ -2118,8 +2120,14 @@ export default function InsurancePortal() {
         <tr><td class="cell-label">Diagnostics</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.diagnostics || '-'}</td>`).join('')}</tr>
         <tr class="row-alt"><td class="cell-label">Pre-existing Condition</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.preexistingCondition || '-'}</td>`).join('')}</tr>
         <tr><td class="cell-label">Physiotherapy</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.physiotherapy || '-'}</td>`).join('')}</tr>
-        <tr class="row-alt"><td class="cell-label">Out-patient Maternity</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.outpatientMaternity || '-'}</td>`).join('')}</tr>
-        <tr><td class="cell-label">In-patient Maternity</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.inpatientMaternity || '-'}</td>`).join('')}</tr>
+        <tr class="row-alt"><td class="cell-label">Out-patient Maternity</td>${selectedPlans.map(p => {
+          const anyMaternityEnabled = allMembersWithSelections.some(m => m.member.maternityEnabled);
+          return `<td class="cell-detail">${anyMaternityEnabled ? (p.benefits?.outpatientMaternity || '-') : '-'}</td>`;
+        }).join('')}</tr>
+        <tr><td class="cell-label">In-patient Maternity</td>${selectedPlans.map(p => {
+          const anyMaternityEnabled = allMembersWithSelections.some(m => m.member.maternityEnabled);
+          return `<td class="cell-detail">${anyMaternityEnabled ? (p.benefits?.inpatientMaternity || '-') : '-'}</td>`;
+        }).join('')}</tr>
         <tr class="row-alt"><td class="cell-label">Dental</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.dental?.enabled ? (p.benefits.dental.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
         <tr><td class="cell-label">Optical</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.optical?.enabled ? (p.benefits.optical.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
         <tr class="row-alt"><td class="cell-label">Alternative Medicine</td>${selectedPlans.map(p => `<td class="cell-detail">${p.benefits?.alternativeMedicine?.enabled ? (p.benefits.alternativeMedicine.value || 'Covered') : 'Not Covered'}</td>`).join('')}</tr>
@@ -2130,8 +2138,7 @@ export default function InsurancePortal() {
               const memberResult = memberResults[m.member.id];
               const memberPlan = memberResult?.comparison.find(p => p.id === plan.id);
               if (memberPlan) {
-                const premiumWithBasmaVat = (memberPlan.premium + basmaFee) * (1 + vatRate);
-                return `<td class="cell-premium">${premiumWithBasmaVat.toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`;
+                return `<td class="cell-premium">AED ${memberPlan.premium.toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`;
               }
               return `<td class="cell-premium">-</td>`;
             }).join('')}
@@ -2139,7 +2146,7 @@ export default function InsurancePortal() {
         `).join('')}
         <tr class="row-total">
           <td class="cell-total-label">Total Premium Including (BASMAH/ICP + VAT)</td>
-          ${selectedPlans.map(plan => `<td class="cell-total-value">${(planTotals[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
+          ${selectedPlans.map(plan => `<td class="cell-total-value">AED ${(planTotals[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
         </tr>
       </tbody>
     </table>
@@ -2489,7 +2496,7 @@ ${consolidatedTable}
                       <button onClick={() => removeFamilyMember(member.id)} className="text-red-600 hover:text-red-800">🗑️</button>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <input type="text" placeholder="Name" value={member.name} onChange={(e) => updateFamilyMember(member.id, 'name', e.target.value)} className="px-3 py-2 border rounded-lg" />
                     <input type="date" value={member.dob} onChange={(e) => updateFamilyMember(member.id, 'dob', e.target.value)} className="px-3 py-2 border rounded-lg" />
                     <select value={member.gender} onChange={(e) => updateFamilyMember(member.id, 'gender', e.target.value)} className="px-3 py-2 border rounded-lg">
@@ -2516,6 +2523,15 @@ ${consolidatedTable}
                       <option value="Dependent">Dependent</option>
                       <option value="Other">Other</option>
                     </select>
+                    <label className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-pink-50 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={member.maternityEnabled || false} 
+                        onChange={(e) => updateFamilyMember(member.id, 'maternityEnabled', e.target.checked)}
+                        className="w-4 h-4 text-pink-600"
+                      />
+                      <span className="text-sm text-pink-800">🤰 Maternity</span>
+                    </label>
                   </div>
                 </div>
               );
