@@ -2183,7 +2183,13 @@ export default function InsurancePortal() {
   <style>
     @page {
       size: A4 landscape;
+      size: 297mm 210mm landscape;
       margin: 0;
+    }
+    
+    @page :first {
+      size: A4 landscape;
+      size: 297mm 210mm landscape;
     }
     
     * {
@@ -2397,16 +2403,28 @@ export default function InsurancePortal() {
     
     /* Print Specific */
     @media print {
+      @page {
+        size: A4 landscape;
+        size: 297mm 210mm landscape;
+        margin: 0;
+      }
       html, body {
         width: 297mm;
         height: 210mm;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
       }
       .page-wrapper {
         page-break-after: always;
         page-break-inside: avoid;
+        width: 297mm;
+        height: 210mm;
       }
       .cover-page {
         page-break-after: always;
+        width: 297mm;
+        height: 210mm;
       }
     }
   </style>
