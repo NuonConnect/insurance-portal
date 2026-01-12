@@ -1039,7 +1039,10 @@ export default function InsurancePortal() {
   // Cloud benefits
   const [cloudBenefits, setCloudBenefits] = useState<{ [key: string]: PlanBenefits }>({});
   
-  // LOCAL PERSISTENT EDITS - These survive page refresh (now member-specific: memberId_planId)
+  // Cloud plan edits (plan name, network, copay) - syncs across all users
+  const [cloudPlanEdits, setCloudPlanEdits] = useState<{ [planId: string]: { plan?: string; network?: string; copay?: string } }>({});
+  
+  // LOCAL PERSISTENT EDITS - These survive page refresh (now member-specific: memberId_planId for premium only)
   const [localPlanEdits, setLocalPlanEdits] = useState<{ [memberPlanKey: string]: { plan?: string; network?: string; copay?: string; premium?: number } }>({});
   const [localBenefitsEdits, setLocalBenefitsEdits] = useState<{ [planId: string]: PlanBenefits }>({});
   
@@ -1133,6 +1136,27 @@ export default function InsurancePortal() {
       }
     };
     loadCloudBenefits();
+
+    // Load cloud plan edits (plan name, network, copay)
+    const loadCloudPlanEdits = async () => {
+      try {
+        const response = await fetch('/api/plan-edits');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.edits) {
+            const cleanEdits: { [key: string]: { plan?: string; network?: string; copay?: string } } = {};
+            Object.keys(data.edits).forEach(key => {
+              const { _updatedAt, ...editData } = data.edits[key];
+              cleanEdits[key] = editData;
+            });
+            setCloudPlanEdits(cleanEdits);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cloud plan edits:', error);
+      }
+    };
+    loadCloudPlanEdits();
 
     // Load cloud manual plans
     const loadCloudManualPlans = async () => {
@@ -1245,22 +1269,28 @@ export default function InsurancePortal() {
     return { ...defaultBenefits };
   };
 
-  // Apply local plan edits to a plan (member-specific)
+  // Apply local plan edits to a plan (cloud edits for plan/network/copay, local for premium)
   const applyLocalEdits = (plan: InsurancePlan, memberId?: number): InsurancePlan => {
-    // Use member-specific key if memberId provided, otherwise fall back to plan.id only
+    // Cloud edits for plan name, network, copay (shared across all users)
+    const cloudEdits = cloudPlanEdits[plan.id];
+    
+    // Member-specific key for premium only
     const memberPlanKey = memberId !== undefined ? `${memberId}_${plan.id}` : plan.id;
-    const edits = localPlanEdits[memberPlanKey];
-    // Check local edits first, then cloud benefits
+    const localEdits = localPlanEdits[memberPlanKey];
+    
+    // Check local edits first, then cloud benefits for benefits
     const benefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
     
-    if (!edits && !benefitsEdits) return plan;
+    if (!cloudEdits && !localEdits && !benefitsEdits) return plan;
     
     return {
       ...plan,
-      plan: edits?.plan || plan.plan,
-      network: edits?.network || plan.network,
-      copay: edits?.copay || plan.copay,
-      premium: edits?.premium !== undefined ? edits.premium : plan.premium,
+      // Plan name, network, copay come from cloud edits (shared)
+      plan: cloudEdits?.plan || plan.plan,
+      network: cloudEdits?.network || plan.network,
+      copay: cloudEdits?.copay || plan.copay,
+      // Premium comes from local member-specific edits
+      premium: localEdits?.premium !== undefined ? localEdits.premium : plan.premium,
       benefits: benefitsEdits || plan.benefits
     };
   };
@@ -1653,22 +1683,26 @@ export default function InsurancePortal() {
   const openEditResultPlanModal = (memberId: number, planId: string) => {
     const plan = memberResults[memberId].comparison.find((p: any) => p.id === planId);
     if (!plan) return;
-    // Check if there are existing edits for this member+plan
+    // Check cloud edits for plan/network/copay (shared across all users)
+    const cloudEdits = cloudPlanEdits[planId];
+    // Check local edits for premium (member-specific)
     const memberPlanKey = `${memberId}_${planId}`;
-    const existingEdits = localPlanEdits[memberPlanKey];
+    const localEdits = localPlanEdits[memberPlanKey];
     setEditingResultPlan({ 
       ...plan, 
-      plan: existingEdits?.plan || plan.plan,
-      network: existingEdits?.network || plan.network,
-      copay: existingEdits?.copay || plan.copay,
-      premium: existingEdits?.premium !== undefined ? existingEdits.premium : plan.premium
+      // Plan name, network, copay from cloud edits (shared)
+      plan: cloudEdits?.plan || plan.plan,
+      network: cloudEdits?.network || plan.network,
+      copay: cloudEdits?.copay || plan.copay,
+      // Premium from local edits (member-specific)
+      premium: localEdits?.premium !== undefined ? localEdits.premium : plan.premium
     });
     setEditingMemberId(memberId);
     setShowEditResultPlanModal(true);
   };
 
-  // Save edited result plan (member-specific)
-  const saveEditedResultPlan = () => {
+  // Save edited result plan (cloud for plan/network/copay, local for premium)
+  const saveEditedResultPlan = async () => {
     if (!editingResultPlan || !editingResultPlan.plan || !editingResultPlan.premium) {
       alert('Please enter plan name and premium');
       return;
@@ -1681,43 +1715,66 @@ export default function InsurancePortal() {
     
     const planId = editingResultPlan.id;
     const memberPlanKey = `${editingMemberId}_${planId}`;
-    const editData = {
+    
+    // Cloud data for plan name, network, copay (shared across all users)
+    const cloudEditData = {
       plan: editingResultPlan.plan,
       network: editingResultPlan.network || 'Standard',
-      copay: editingResultPlan.copay || 'Variable',
-      premium: parseFloat(editingResultPlan.premium)
+      copay: editingResultPlan.copay || 'Variable'
     };
+    
+    // Local data for premium only (member-specific)
+    const premiumValue = parseFloat(editingResultPlan.premium);
 
-    // Save to localStorage with member-specific key
+    // Save premium to localStorage with member-specific key
     setLocalPlanEdits(prev => ({
       ...prev,
-      [memberPlanKey]: editData
+      [memberPlanKey]: { premium: premiumValue }
     }));
+    
+    // Update cloudPlanEdits state immediately
+    setCloudPlanEdits(prev => ({ ...prev, [planId]: cloudEditData }));
 
-    // Update current session state for ONLY this member's plan
+    // Update current session state for ALL members with this plan (for plan/network/copay)
+    // But only update premium for the current member
     setMemberResults(prev => {
       const updated = { ...prev };
-      if (updated[editingMemberId]) {
-        updated[editingMemberId] = {
-          ...updated[editingMemberId],
-          comparison: updated[editingMemberId].comparison.map((item: any) =>
+      Object.keys(updated).forEach(mKey => {
+        const mId = parseInt(mKey);
+        updated[mId] = {
+          ...updated[mId],
+          comparison: updated[mId].comparison.map((item: any) =>
             item.id === planId ? {
               ...item,
-              plan: editData.plan,
-              network: editData.network,
-              copay: editData.copay,
-              premium: editData.premium
+              // Plan name, network, copay apply to all members
+              plan: cloudEditData.plan,
+              network: cloudEditData.network,
+              copay: cloudEditData.copay,
+              // Premium only changes for the current member being edited
+              premium: mId === editingMemberId ? premiumValue : item.premium
             } : item
           )
         };
-      }
+      });
       return updated;
     });
+
+    // Save plan/network/copay to cloud for persistence across all users
+    try {
+      await fetch('/api/plan-edits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId, edits: cloudEditData })
+      });
+      alert('✅ Plan details (name, network, copay) saved for all users! Premium updated for this member only.');
+    } catch (error) {
+      console.error('Error saving plan edits to cloud:', error);
+      alert('✅ Plan updated locally! Cloud sync may be unavailable.');
+    }
 
     setShowEditResultPlanModal(false);
     setEditingResultPlan(null);
     setEditingMemberId(null);
-    alert('✅ Plan updated for this member! Changes will persist after refresh.');
   };
 
   // Toggle benefits panel
@@ -2183,13 +2240,7 @@ export default function InsurancePortal() {
   <style>
     @page {
       size: A4 landscape;
-      size: 297mm 210mm landscape;
       margin: 0;
-    }
-    
-    @page :first {
-      size: A4 landscape;
-      size: 297mm 210mm landscape;
     }
     
     * {
@@ -2403,28 +2454,16 @@ export default function InsurancePortal() {
     
     /* Print Specific */
     @media print {
-      @page {
-        size: A4 landscape;
-        size: 297mm 210mm landscape;
-        margin: 0;
-      }
       html, body {
         width: 297mm;
         height: 210mm;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        color-adjust: exact !important;
       }
       .page-wrapper {
         page-break-after: always;
         page-break-inside: avoid;
-        width: 297mm;
-        height: 210mm;
       }
       .cover-page {
         page-break-after: always;
-        width: 297mm;
-        height: 210mm;
       }
     }
   </style>
@@ -2878,20 +2917,26 @@ ${consolidatedTable}
                               const actualRank = results.comparison.findIndex(p => p.id === plan.id) + 1;
                               const benefitsKey = `${member.id}_${plan.id}`;
                               const memberPlanKey = `${member.id}_${plan.id}`;
-                              const hasLocalEdits = localPlanEdits[memberPlanKey] || localBenefitsEdits[plan.id];
+                              // Check for cloud edits (plan/network/copay) and local edits (premium)
+                              const hasCloudEdits = cloudPlanEdits[plan.id];
+                              const hasLocalPremiumEdit = localPlanEdits[memberPlanKey]?.premium !== undefined;
+                              const hasBenefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
+                              const hasAnyEdits = hasCloudEdits || hasLocalPremiumEdit || hasBenefitsEdits;
                               
-                              // Apply member-specific edits to display
-                              const displayPlan = localPlanEdits[memberPlanKey] ? {
+                              // Apply cloud edits for plan/network/copay, local edits for premium
+                              const displayPlan = {
                                 ...plan,
-                                plan: localPlanEdits[memberPlanKey].plan || plan.plan,
-                                network: localPlanEdits[memberPlanKey].network || plan.network,
-                                copay: localPlanEdits[memberPlanKey].copay || plan.copay,
-                                premium: localPlanEdits[memberPlanKey].premium !== undefined ? localPlanEdits[memberPlanKey].premium : plan.premium
-                              } : plan;
+                                // Cloud edits for plan name, network, copay (shared across all users)
+                                plan: cloudPlanEdits[plan.id]?.plan || plan.plan,
+                                network: cloudPlanEdits[plan.id]?.network || plan.network,
+                                copay: cloudPlanEdits[plan.id]?.copay || plan.copay,
+                                // Local edits for premium (member-specific)
+                                premium: localPlanEdits[memberPlanKey]?.premium !== undefined ? localPlanEdits[memberPlanKey].premium : plan.premium
+                              };
                               
                               return (
                                 <React.Fragment key={plan.id}>
-                                  <tr className={`border-b hover:bg-gray-50 ${plan.selected ? 'bg-green-50' : ''} ${hasLocalEdits ? 'border-l-4 border-l-blue-500' : ''} ${plan.isManual ? 'border-l-4 border-l-purple-500' : ''}`}>
+                                  <tr className={`border-b hover:bg-gray-50 ${plan.selected ? 'bg-green-50' : ''} ${hasAnyEdits ? 'border-l-4 border-l-blue-500' : ''} ${plan.isManual ? 'border-l-4 border-l-purple-500' : ''}`}>
                                     <td className="p-2"><input type="checkbox" checked={plan.selected} onChange={() => togglePlanSelection(member.id, plan.id)} className="w-4 h-4" /></td>
                                     <td className="p-2">
                                       {actualRank <= 3 ? (
@@ -2905,7 +2950,7 @@ ${consolidatedTable}
                                     <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">
                                       {displayPlan.plan}
-                                      {hasLocalEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
+                                      {hasAnyEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.copay}</td>
                                     <td className="p-2 text-right font-semibold text-blue-700">AED {displayPlan.premium?.toLocaleString()}</td>
