@@ -1116,26 +1116,30 @@ export default function InsurancePortal() {
       console.error('Error loading custom providers:', e);
     }
 
-    // Load cloud benefits
+    // Load cloud benefits and plan edits
     const loadCloudBenefits = async () => {
       try {
         const response = await fetch('/api/benefits');
         if (response.ok) {
           const data = await response.json();
+          console.log('📥 Raw cloud data:', data);
           if (data.success && data.benefits) {
             const cleanBenefits: { [key: string]: PlanBenefits } = {};
             const cleanPlanEdits: { [key: string]: { plan?: string; network?: string; copay?: string } } = {};
             
             Object.keys(data.benefits).forEach(key => {
               const { _updatedAt, ...benefitData } = data.benefits[key];
-              // Check if this is a plan edit (has _isPlanEdit flag) or regular benefits
-              if (benefitData._isPlanEdit) {
+              // Check if this is a plan edit (starts with PLAN_EDIT_ prefix OR has _isPlanEdit flag)
+              if (key.startsWith('PLAN_EDIT_') || benefitData._isPlanEdit) {
                 const { _isPlanEdit, ...editData } = benefitData;
-                cleanPlanEdits[key.replace('PLAN_EDIT_', '')] = editData;
+                const planId = key.replace('PLAN_EDIT_', '');
+                cleanPlanEdits[planId] = editData;
+                console.log('📝 Loaded plan edit for:', planId, editData);
               } else {
                 cleanBenefits[key] = benefitData as PlanBenefits;
               }
             });
+            console.log('✅ Cloud plan edits loaded:', cleanPlanEdits);
             setCloudBenefits(cleanBenefits);
             setCloudPlanEdits(cleanPlanEdits);
           }
@@ -1749,18 +1753,29 @@ export default function InsurancePortal() {
 
     // Save plan/network/copay to cloud using the existing benefits API with a prefix
     try {
-      await fetch('/api/benefits', {
+      const savePayload = { 
+        planKey: `PLAN_EDIT_${planId}`, 
+        benefits: { ...cloudEditData, _isPlanEdit: true } 
+      };
+      console.log('📤 Saving plan edit to cloud:', savePayload);
+      
+      const response = await fetch('/api/benefits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          planKey: `PLAN_EDIT_${planId}`, 
-          benefits: { ...cloudEditData, _isPlanEdit: true } 
-        })
+        body: JSON.stringify(savePayload)
       });
-      alert('✅ Plan details (name, network, copay) saved for all users! Premium updated for this member only.');
+      
+      const result = await response.json();
+      console.log('📥 Save response:', result);
+      
+      if (result.success) {
+        alert('✅ Plan details (name, network, copay) saved to cloud! Premium updated for this member only.');
+      } else {
+        alert('⚠️ Save may have failed. Check console for details.');
+      }
     } catch (error) {
       console.error('Error saving plan edits to cloud:', error);
-      alert('✅ Plan updated locally! Cloud sync may be unavailable.');
+      alert('❌ Cloud sync failed! Changes saved locally only.');
     }
 
     setShowEditResultPlanModal(false);
