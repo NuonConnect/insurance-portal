@@ -1124,11 +1124,20 @@ export default function InsurancePortal() {
           const data = await response.json();
           if (data.success && data.benefits) {
             const cleanBenefits: { [key: string]: PlanBenefits } = {};
+            const cleanPlanEdits: { [key: string]: { plan?: string; network?: string; copay?: string } } = {};
+            
             Object.keys(data.benefits).forEach(key => {
               const { _updatedAt, ...benefitData } = data.benefits[key];
-              cleanBenefits[key] = benefitData as PlanBenefits;
+              // Check if this is a plan edit (has _isPlanEdit flag) or regular benefits
+              if (benefitData._isPlanEdit) {
+                const { _isPlanEdit, ...editData } = benefitData;
+                cleanPlanEdits[key.replace('PLAN_EDIT_', '')] = editData;
+              } else {
+                cleanBenefits[key] = benefitData as PlanBenefits;
+              }
             });
             setCloudBenefits(cleanBenefits);
+            setCloudPlanEdits(cleanPlanEdits);
           }
         }
       } catch (error) {
@@ -1136,27 +1145,6 @@ export default function InsurancePortal() {
       }
     };
     loadCloudBenefits();
-
-    // Load cloud plan edits (plan name, network, copay)
-    const loadCloudPlanEdits = async () => {
-      try {
-        const response = await fetch('/api/plan-edits');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.edits) {
-            const cleanEdits: { [key: string]: { plan?: string; network?: string; copay?: string } } = {};
-            Object.keys(data.edits).forEach(key => {
-              const { _updatedAt, ...editData } = data.edits[key];
-              cleanEdits[key] = editData;
-            });
-            setCloudPlanEdits(cleanEdits);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading cloud plan edits:', error);
-      }
-    };
-    loadCloudPlanEdits();
 
     // Load cloud manual plans
     const loadCloudManualPlans = async () => {
@@ -1759,12 +1747,15 @@ export default function InsurancePortal() {
       return updated;
     });
 
-    // Save plan/network/copay to cloud for persistence across all users
+    // Save plan/network/copay to cloud using the existing benefits API with a prefix
     try {
-      await fetch('/api/plan-edits', {
+      await fetch('/api/benefits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId, edits: cloudEditData })
+        body: JSON.stringify({ 
+          planKey: `PLAN_EDIT_${planId}`, 
+          benefits: { ...cloudEditData, _isPlanEdit: true } 
+        })
       });
       alert('✅ Plan details (name, network, copay) saved for all users! Premium updated for this member only.');
     } catch (error) {
