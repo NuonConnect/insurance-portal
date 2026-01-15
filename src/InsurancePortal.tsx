@@ -2108,25 +2108,41 @@ export default function InsurancePortal() {
     const numPlans = selectedPlans.length;
     const numMembers = allMembersWithSelections.length;
 
-    // Calculate totals per plan (sum across all members) with BASMAH/ICP + VAT
+    // Calculate totals per plan (sum across all members) with detailed breakdown
     const planTotals: { [planId: string]: number } = {};
+    const planGrossPremiums: { [planId: string]: number } = {}; // Sum of all member premiums
+    const planBasmahTotals: { [planId: string]: number } = {}; // Basmah × number of members
+    const planVatTotals: { [planId: string]: number } = {}; // 5% of (Gross + Basmah)
+    
     const isDubai = sharedSettings.location === 'Dubai';
-    const basmaFee = isDubai ? 37 : 24; // Dubai = 37, Northern Emirates = 24
+    const basmaFeePerPerson = isDubai ? 37 : 24; // Dubai = 37, Northern Emirates = 24
     const vatRate = 0.05; // 5% VAT
     
     selectedPlans.forEach(plan => {
-      planTotals[plan.id] = 0;
+      let grossPremium = 0;
+      let memberCount = 0;
+      
       allMembersWithSelections.forEach(m => {
         const memberResult = memberResults[m.member.id];
         const memberPlan = memberResult?.comparison.find(p => p.id === plan.id);
         if (memberPlan) {
-          // Formula: (premium + BASMAH/ICP) * (1 + VAT)
-          const premiumWithBasma = memberPlan.premium + basmaFee;
-          const premiumWithVat = premiumWithBasma * (1 + vatRate);
-          planTotals[plan.id] += premiumWithVat;
+          grossPremium += memberPlan.premium;
+          memberCount++;
         }
       });
+      
+      const basmahTotal = basmaFeePerPerson * memberCount;
+      const vatAmount = (grossPremium + basmahTotal) * vatRate;
+      const grandTotal = grossPremium + basmahTotal + vatAmount;
+      
+      planGrossPremiums[plan.id] = grossPremium;
+      planBasmahTotals[plan.id] = basmahTotal;
+      planVatTotals[plan.id] = vatAmount;
+      planTotals[plan.id] = grandTotal;
     });
+    
+    // For Basmah label
+    const memberCount = allMembersWithSelections.length;
 
     // Dynamic column width based on number of plans
     const planColWidth = numPlans <= 2 ? 220 : numPlans <= 3 ? 180 : numPlans <= 4 ? 150 : numPlans <= 5 ? 130 : 110;
@@ -2207,8 +2223,20 @@ export default function InsurancePortal() {
             }).join('')}
           </tr>
         `).join('')}
+        <tr class="row-subtotal">
+          <td class="cell-subtotal-label">Gross Premium (Excluding Basmah & VAT)</td>
+          ${selectedPlans.map(plan => `<td class="cell-subtotal-value">AED ${(planGrossPremiums[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
+        </tr>
+        <tr class="row-subtotal">
+          <td class="cell-subtotal-label">Basmah (@ ${basmaFeePerPerson}/- Per Person)${isDubai ? ' (DXB visa holders only)' : ' (NE visa holders)'}</td>
+          ${selectedPlans.map(plan => `<td class="cell-subtotal-value">AED ${(planBasmahTotals[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
+        </tr>
+        <tr class="row-subtotal">
+          <td class="cell-subtotal-label">VAT (5%)</td>
+          ${selectedPlans.map(plan => `<td class="cell-subtotal-value">AED ${(planVatTotals[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
+        </tr>
         <tr class="row-total">
-          <td class="cell-total-label">Total Premium Including (BASMAH/ICP + VAT)</td>
+          <td class="cell-total-label">Grand Total</td>
           ${selectedPlans.map(plan => `<td class="cell-total-value">AED ${(planTotals[plan.id] || 0).toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`).join('')}
         </tr>
       </tbody>
@@ -2392,6 +2420,25 @@ export default function InsurancePortal() {
     
     .row-member { background: #f0fdf4; }
     .row-member .cell-label { background: #dcfce7; }
+    
+    .row-subtotal { background: #e0f2fe; }
+    .cell-subtotal-label {
+      text-align: left !important;
+      font-weight: 600;
+      color: #0369a1;
+      background: #bae6fd !important;
+      font-size: 8px;
+      padding: 4px 8px !important;
+    }
+    .cell-subtotal-value {
+      font-weight: 600;
+      color: #0284c7;
+      font-size: 9px;
+      background: #e0f2fe;
+      text-align: center !important;
+      vertical-align: middle !important;
+      padding: 4px 8px !important;
+    }
     
     .row-total { background: #dbeafe; }
     .cell-total-label {
