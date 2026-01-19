@@ -1895,14 +1895,14 @@ export default function InsurancePortal() {
   // Save to report history
   const saveToReportHistory = (reportName: string) => {
     try {
-      // Store only essential data - selected plans only, not full comparison
+      // Store only essential data - selected plans AND plans with status
       const minimalMemberResults: { [key: number]: any } = {};
       Object.keys(memberResults).forEach(key => {
         const memberId = parseInt(key);
         const result = memberResults[memberId];
         minimalMemberResults[memberId] = {
           age: result.age,
-          comparison: result.comparison.filter(p => p.selected).map(p => ({
+          comparison: result.comparison.filter(p => p.selected || p.status !== 'none').map(p => ({
             id: p.id,
             provider: p.provider,
             plan: p.plan,
@@ -1910,7 +1910,9 @@ export default function InsurancePortal() {
             copay: p.copay,
             premium: p.premium,
             selected: p.selected,
-            status: p.status
+            status: p.status,
+            isManual: p.isManual,
+            providerKey: p.providerKey
           }))
         };
       });
@@ -1919,10 +1921,19 @@ export default function InsurancePortal() {
         id: Date.now(),
         name: reportName,
         timestamp: new Date().toISOString(),
-        familyMembers: familyMembers.map(m => ({ id: m.id, name: m.name, dob: m.dob, gender: m.gender, relationship: m.relationship, sponsorship: m.sponsorship })),
+        familyMembers: familyMembers.map(m => ({ 
+          id: m.id, 
+          name: m.name, 
+          dob: m.dob, 
+          gender: m.gender, 
+          relationship: m.relationship, 
+          sponsorship: m.sponsorship,
+          maternityEnabled: m.maternityEnabled 
+        })),
         sharedSettings,
         memberResults: minimalMemberResults,
-        advisorComment
+        advisorComment,
+        manualPlans // Save manual plans so they can be restored
       };
       
       // Keep only last 10 reports to prevent quota issues
@@ -1951,21 +1962,183 @@ export default function InsurancePortal() {
   const loadReportFromHistory = (reportId: number) => {
     const report = reportHistory.find(r => r.id === reportId);
     if (!report) return;
-    setFamilyMembers(report.familyMembers);
+    
+    // Restore family members with all needed properties
+    const restoredMembers = report.familyMembers.map((m: any) => ({
+      ...m,
+      maternityEnabled: m.maternityEnabled || false
+    }));
+    
+    setFamilyMembers(restoredMembers);
     setSharedSettings(report.sharedSettings);
-    // Note: memberResults from history only contains selected plans summary
-    // User should re-search to get full comparison data
-    setMemberResults(report.memberResults || {});
-    setAdvisorComment(report.advisorComment);
+    setAdvisorComment(report.advisorComment || '');
     setManualPlans(report.manualPlans || {});
-    const initialExpanded: { [key: number]: boolean } = {};
-    report.familyMembers.forEach((m: FamilyMember) => { initialExpanded[m.id] = true; });
-    setExpandedMembers(initialExpanded);
-    setShowReportHistory(false);
-    // Notify user to re-search for full data
-    if (Object.keys(report.memberResults || {}).length > 0) {
-      alert('Report loaded! Click "Search Plans" to see full comparison results.');
+    
+    // Store the selected plan IDs and their statuses from history for later restoration
+    const savedSelections: { [memberId: number]: { [planId: string]: { selected: boolean; status: string } } } = {};
+    if (report.memberResults) {
+      Object.keys(report.memberResults).forEach(key => {
+        const memberId = parseInt(key);
+        savedSelections[memberId] = {};
+        const comparison = report.memberResults[memberId]?.comparison || [];
+        comparison.forEach((p: any) => {
+          if (p.selected || p.status !== 'none') {
+            savedSelections[memberId][p.id] = { selected: p.selected, status: p.status || 'none' };
+          }
+        });
+      });
     }
+    
+    // Clear current results first
+    setMemberResults({});
+    setShowReportHistory(false);
+    
+    // Wait a moment for state to update, then trigger search and restore selections
+    setTimeout(() => {
+      // Trigger search
+      const isDubai = report.sharedSettings?.location === 'Dubai';
+      const isBelowSalary = report.sharedSettings?.salaryCategory === 'below4000';
+      const newMemberResults: { [key: number]: MemberResult } = {};
+
+      restoredMembers.forEach((member: FamilyMember) => {
+        const age = calculateAge(member.dob);
+        if (age < 0 || age > 100) return;
+
+        const genderKey = member.gender === 'Male' ? 'M' : 'F';
+        const memberPlans: InsurancePlan[] = [];
+
+        Object.keys(INSURANCE_DB).forEach(provider => {
+          const plans = INSURANCE_DB[provider];
+          
+          Object.keys(plans).forEach(planName => {
+            const isNEPlan = planName.includes('_NE') || planName.startsWith('NE_') || planName.includes('NEMED');
+            const isDubaiPlan = planName.includes('_DXB') || planName.includes('DMED') || planName.includes('EMED') || planName.includes('IMED') || planName.includes('DUBAI');
+            
+            if (isDubaiPlan && !isDubai) return;
+            if (isNEPlan && isDubai) return;
+            
+            if (provider === 'ORIENT') {
+              const isLSB = planName.includes('_LSB');
+              const isNLSB = planName.includes('_NLSB') || planName === 'IMED_DXB';
+              
+              if (member.sponsorship === 'Principal') {
+                if (isBelowSalary && isNLSB) return;
+                if (!isBelowSalary && isLSB) return;
+              } else {
+                if (planName.includes('EMED') || planName === 'IMED_DXB') return;
+              }
+            }
+
+            const ageBand = findAgeBand(age, provider, planName);
+            if (ageBand) {
+              const rateData = plans[planName][ageBand];
+              if (rateData && rateData[genderKey as 'M' | 'F']) {
+                const premium = rateData[genderKey as 'M' | 'F'];
+                
+                let displayName = planName.replace(/_/g, ' ');
+                let network = 'Standard';
+                let copay = 'Variable';
+                
+                if (planName.endsWith('_0')) copay = '0%';
+                else if (planName.endsWith('_10')) copay = '10%';
+                else if (planName.endsWith('_20')) copay = '20%';
+                
+                if (planName.includes('MEDNET_SILKROAD')) { network = 'MEDNET'; displayName = 'SilkRoad'; }
+                else if (planName.includes('MEDNET_PEARL')) { network = 'MEDNET'; displayName = 'Pearl'; }
+                else if (planName.includes('MEDNET_EMERALD')) { network = 'MEDNET'; displayName = 'Emerald'; }
+                else if (planName.includes('MEDNET_GREEN')) { network = 'MEDNET'; displayName = 'Green'; }
+                else if (planName.includes('MEDNET_SILVER_CLASSIC')) { network = 'MEDNET'; displayName = 'Silver Classic'; }
+                else if (planName.includes('MEDNET_SILVER_PREMIUM')) { network = 'MEDNET'; displayName = 'Silver Premium'; }
+                else if (planName.includes('MEDNET_GOLD')) { network = 'MEDNET'; displayName = 'Gold'; }
+                else if (planName.includes('NEXTCARE_PCP')) { network = 'NEXTCARE'; displayName = 'PCP'; }
+                else if (planName.includes('NEXTCARE_RN3')) { network = 'NEXTCARE'; displayName = 'RN3'; }
+                else if (planName.includes('NEXTCARE_RN2')) { network = 'NEXTCARE'; displayName = 'RN2'; }
+                else if (planName.includes('NEXTCARE_RN_')) { network = 'NEXTCARE'; displayName = 'RN'; }
+                else if (planName.includes('NEXTCARE_GN_LIMITED')) { network = 'NEXTCARE'; displayName = 'GN Limited'; }
+                else if (planName.includes('NEXTCARE_GN_PLUS')) { network = 'NEXTCARE'; displayName = 'GN+'; }
+                else if (planName.includes('NEXTCARE_GN_')) { network = 'NEXTCARE'; displayName = 'GN'; }
+                else if (planName.includes('NAS_VN_')) { network = 'NAS'; displayName = 'VN'; }
+                else if (planName.includes('NAS_WN_')) { network = 'NAS'; displayName = 'WN'; }
+                else if (planName.includes('NAS_SRN_')) { network = 'NAS'; displayName = 'SRN'; }
+                else if (planName.includes('NAS_RN_')) { network = 'NAS'; displayName = 'RN'; }
+                else if (planName.includes('NAS_GN_')) { network = 'NAS'; displayName = 'GN'; }
+                else if (planName.includes('NAS_CN_')) { network = 'NAS'; displayName = 'CN'; }
+                else if (planName.includes('MEDNET')) network = 'MEDNET';
+                else if (planName.includes('NAS')) network = 'NAS';
+                else if (planName.includes('NEXTCARE')) network = 'NEXTCARE';
+                else if (provider === 'FIDELITY' && planName.includes('NE')) network = 'AAFIA TPA';
+                else if (provider === 'UFIC') network = 'UFIC Network';
+                else if (provider.includes('WATANIA') && !provider.includes('MEDNET') && !provider.includes('NAS')) network = 'NAS/Mednet TPA';
+                else if (provider.includes('ORIENT') && !provider.includes('MEDNET') && !provider.includes('NEXTCARE')) network = 'Orient/Nextcare';
+                else if (provider === 'TAKAFUL_EMARAT') network = 'NEXTCARE';
+                
+                let cleanProviderName = provider.replace('_MEDNET', '').replace('_NEXTCARE', '').replace('_NAS', '').replace(/_/g, ' ');
+                
+                const planId = `${provider}_${planName}`;
+                
+                // Check if this plan was selected/had status in history
+                const savedPlanState = savedSelections[member.id]?.[planId];
+                
+                let basePlan: InsurancePlan = {
+                  id: planId,
+                  provider: cleanProviderName,
+                  plan: displayName,
+                  network,
+                  copay,
+                  premium,
+                  selected: savedPlanState?.selected || false,
+                  status: (savedPlanState?.status as 'none' | 'renewal' | 'alternative' | 'recommended') || 'none',
+                  benefits: getPlanBenefits(provider, planName, planId),
+                  planLocation: isDubaiPlan ? 'Dubai' : 'Northern Emirates',
+                  salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All'
+                };
+                
+                basePlan = applyLocalEdits(basePlan);
+                memberPlans.push(basePlan);
+              }
+            }
+          });
+        });
+
+        // Add manual plans
+        Object.keys(manualPlans).forEach(providerKey => {
+          if (manualPlans[providerKey]) {
+            manualPlans[providerKey].forEach(plan => {
+              const planBenefits = cloudBenefits[plan.id] || plan.benefits || { ...defaultBenefits };
+              const savedPlanState = savedSelections[member.id]?.[plan.id];
+              let manualPlan: InsurancePlan = { 
+                ...plan, 
+                selected: savedPlanState?.selected || false, 
+                status: (savedPlanState?.status as 'none' | 'renewal' | 'alternative' | 'recommended') || 'none',
+                benefits: { ...defaultBenefits, ...planBenefits },
+                isManual: true,
+                providerKey: providerKey
+              };
+              manualPlan = applyLocalEdits(manualPlan);
+              memberPlans.push(manualPlan);
+            });
+          }
+        });
+
+        memberPlans.sort((a, b) => a.premium - b.premium);
+
+        newMemberResults[member.id] = {
+          member,
+          age,
+          comparison: memberPlans,
+          minPrice: memberPlans.length > 0 ? Math.min(...memberPlans.map(r => r.premium)) : 0,
+          maxPrice: memberPlans.length > 0 ? Math.max(...memberPlans.map(r => r.premium)) : 0,
+          avgPrice: memberPlans.length > 0 ? memberPlans.reduce((sum, r) => sum + r.premium, 0) / memberPlans.length : 0
+        };
+      });
+
+      setMemberResults(newMemberResults);
+      const initialExpanded: { [key: number]: boolean } = {};
+      restoredMembers.forEach((m: FamilyMember) => { initialExpanded[m.id] = true; });
+      setExpandedMembers(initialExpanded);
+      
+      alert('✅ Report loaded successfully with all comparisons restored!');
+    }, 100);
   };
 
   // Delete from history
