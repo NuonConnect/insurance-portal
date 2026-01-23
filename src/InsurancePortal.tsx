@@ -58,6 +58,7 @@ interface InsurancePlan {
   providerKey?: string;
   planLocation?: string;
   salaryCategory?: string;
+  needsManualRate?: boolean;
 }
 
 interface MemberResult {
@@ -1009,7 +1010,8 @@ const findAgeBand = (age: number, provider: string, plan: string): string | null
       if (age === singleAge) return band;
     }
   }
-  return null;
+  // Return 'NO_RATE' instead of null to include plan with 0 premium for manual editing
+  return 'NO_RATE';
 };
 
 // ============================================================================
@@ -1494,13 +1496,26 @@ export default function InsurancePortal() {
 
           const ageBand = findAgeBand(age, provider, planName);
           if (ageBand) {
-            const rateData = plans[planName][ageBand];
-            if (rateData && rateData[genderKey as 'M' | 'F']) {
-              const premium = rateData[genderKey as 'M' | 'F'];
-              
-              let displayName = planName.replace(/_/g, ' ');
-              let network = 'Standard';
-              let copay = 'Variable';
+            // Check if this is a valid rate or NO_RATE marker
+            const hasValidRate = ageBand !== 'NO_RATE';
+            let premium = 0;
+            let needsManualRate = false;
+            
+            if (hasValidRate) {
+              const rateData = plans[planName][ageBand];
+              if (rateData && rateData[genderKey as 'M' | 'F']) {
+                premium = rateData[genderKey as 'M' | 'F'];
+              } else {
+                needsManualRate = true;
+              }
+            } else {
+              // No rate available for this age - show with 0 premium for manual entry
+              needsManualRate = true;
+            }
+            
+            let displayName = planName.replace(/_/g, ' ');
+            let network = 'Standard';
+            let copay = 'Variable';
               
               // Copay detection
               if (planName.endsWith('_0')) copay = '0%';
@@ -1556,14 +1571,14 @@ export default function InsurancePortal() {
                 status: 'none',
                 benefits: getPlanBenefits(provider, planName, planId),
                 planLocation: isDubaiPlan ? 'Dubai' : 'Northern Emirates',
-                salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All'
+                salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All',
+                needsManualRate: needsManualRate
               };
               
               // Apply any local edits
               basePlan = applyLocalEdits(basePlan);
               
               memberPlans.push(basePlan);
-            }
           }
         });
       });
@@ -1590,15 +1605,27 @@ export default function InsurancePortal() {
         }
       });
 
-      memberPlans.sort((a, b) => a.premium - b.premium);
+      // Sort plans: first by whether they have rates, then by premium
+      // Plans with N/A rates (needsManualRate && premium === 0) go to the end
+      memberPlans.sort((a, b) => {
+        const aIsNA = a.needsManualRate && a.premium === 0;
+        const bIsNA = b.needsManualRate && b.premium === 0;
+        // If one is N/A and the other isn't, N/A goes to the end
+        if (aIsNA && !bIsNA) return 1;
+        if (!aIsNA && bIsNA) return -1;
+        // Otherwise sort by premium
+        return a.premium - b.premium;
+      });
 
+      // Calculate min/max/avg only from plans with actual premiums (excluding N/A plans)
+      const plansWithRates = memberPlans.filter(p => !(p.needsManualRate && p.premium === 0));
       newMemberResults[member.id] = {
         member,
         age,
         comparison: memberPlans,
-        minPrice: memberPlans.length > 0 ? Math.min(...memberPlans.map(r => r.premium)) : 0,
-        maxPrice: memberPlans.length > 0 ? Math.max(...memberPlans.map(r => r.premium)) : 0,
-        avgPrice: memberPlans.length > 0 ? memberPlans.reduce((sum, r) => sum + r.premium, 0) / memberPlans.length : 0
+        minPrice: plansWithRates.length > 0 ? Math.min(...plansWithRates.map(r => r.premium)) : 0,
+        maxPrice: plansWithRates.length > 0 ? Math.max(...plansWithRates.map(r => r.premium)) : 0,
+        avgPrice: plansWithRates.length > 0 ? plansWithRates.reduce((sum, r) => sum + r.premium, 0) / plansWithRates.length : 0
       };
     });
 
@@ -3074,16 +3101,21 @@ ${consolidatedTable}
               const filteredPlans = filterPlans(results.comparison);
               const selectedCount = results.comparison.filter(p => p.selected).length;
               const displayPlans = showSelected[member.id] ? filteredPlans.filter(p => p.selected) : filteredPlans;
+              const naPlansCount = results.comparison.filter(p => p.needsManualRate && p.premium === 0).length;
               
               return (
                 <div key={member.id} className="mb-6 border-2 border-gray-200 rounded-lg overflow-hidden">
                   <div className="flex justify-between items-center p-4 bg-gradient-to-r from-orange-100 to-blue-100 cursor-pointer" onClick={() => setExpandedMembers(prev => ({ ...prev, [member.id]: !prev[member.id] }))}>
                     <div>
-                      <h3 className="font-bold text-gray-800">{member.name || `Member ${memberIdx + 1}`} ({member.relationship})</h3>
+                      <h3 className="font-bold text-gray-800">
+                        {member.name || `Member ${memberIdx + 1}`} ({member.relationship})
+                        {results.age > 65 && <span className="ml-2 px-2 py-0.5 bg-amber-200 text-amber-800 text-xs rounded-full">65+</span>}
+                      </h3>
                       <p className="text-sm text-gray-600">Age: {results.age} | {member.gender} | {member.sponsorship}</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm font-medium text-blue-600">{filteredPlans.length} plans</span>
+                      {naPlansCount > 0 && <span className="text-sm font-medium text-amber-600">{naPlansCount} N/A</span>}
                       <span className="text-sm font-medium text-green-600">{selectedCount} selected</span>
                       <span className="text-2xl">{expandedMembers[member.id] ? '▼' : '▶'}</span>
                     </div>
@@ -3091,6 +3123,15 @@ ${consolidatedTable}
 
                   {expandedMembers[member.id] && (
                     <div className="p-4">
+                      {/* Age 65+ Warning Banner */}
+                      {results.age > 65 && naPlansCount > 0 && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                          <p className="text-amber-800 text-sm">
+                            <strong>⚠️ Age 65+ Notice:</strong> {naPlansCount} plans show "N/A" because they don't have standard rates for this age group.
+                            You can manually edit the premium by clicking the ✏️ button next to "N/A". Plans with rates: UFIC, ORIENT Basic, WATANIA NE.
+                          </p>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                         <div className="p-3 bg-green-50 rounded-lg text-center">
                           <p className="text-xs text-gray-600">Lowest</p>
@@ -3172,6 +3213,7 @@ ${consolidatedTable}
                                     <td className="p-2 font-medium">
                                       {displayPlan.provider}
                                       {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
+                                      {plan.needsManualRate && !localPlanEdits[memberPlanKey]?.premium && <span className="ml-1 px-1 py-0.5 bg-amber-100 text-amber-700 text-xs rounded">65+ N/A</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">
@@ -3179,7 +3221,20 @@ ${consolidatedTable}
                                       {hasAnyEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.copay}</td>
-                                    <td className="p-2 text-right font-semibold text-blue-700">AED {displayPlan.premium?.toLocaleString()}</td>
+                                    <td className={`p-2 text-right font-semibold ${plan.needsManualRate && displayPlan.premium === 0 ? 'text-amber-600 bg-amber-50' : 'text-blue-700'}`}>
+                                      {plan.needsManualRate && displayPlan.premium === 0 ? (
+                                        <span className="flex items-center justify-end gap-1">
+                                          <span className="text-xs">N/A</span>
+                                          <button 
+                                            onClick={() => openEditResultPlanModal(member.id, plan.id)} 
+                                            className="px-1 py-0.5 text-xs bg-amber-200 hover:bg-amber-300 rounded"
+                                            title="Click to enter premium manually"
+                                          >✏️</button>
+                                        </span>
+                                      ) : (
+                                        `AED ${displayPlan.premium?.toLocaleString()}`
+                                      )}
+                                    </td>
                                     <td className="p-2 text-center">
                                       <select value={plan.status} onChange={(e) => updatePlanStatus(member.id, plan.id, e.target.value)} className="text-xs px-2 py-1 border rounded">
                                         <option value="none">-</option>
