@@ -2723,7 +2723,7 @@ export default function InsurancePortal() {
 </head>
 <body>
 <div class="cover-page">
-  <img src="https://i.imgur.com/oIjCU2a.png" alt="NSIB Cover" />
+  <img src="https://i.imgur.com/NNaqoli.png" alt="NSIB Cover" />
 </div>
 ${consolidatedTable}
 </body>
