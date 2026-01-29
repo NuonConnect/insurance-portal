@@ -1181,14 +1181,7 @@ export default function InsurancePortal() {
       const history = localStorage.getItem(STORAGE_KEYS.REPORT_HISTORY);
       if (history) {
         const parsed = JSON.parse(history);
-        // Keep only last 10 entries to prevent quota issues
-        if (parsed.length > 10) {
-          const trimmed = parsed.slice(-10);
-          localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(trimmed));
-          setReportHistory(trimmed);
-        } else {
-          setReportHistory(parsed);
-        }
+        setReportHistory(parsed);
       }
     } catch (e) {
       console.error('Error loading history:', e);
@@ -1556,6 +1549,11 @@ export default function InsurancePortal() {
               
               // Get clean provider name (remove _MEDNET, _NEXTCARE, _NAS suffix)
               let cleanProviderName = provider.replace('_MEDNET', '').replace('_NEXTCARE', '').replace('_NAS', '').replace(/_/g, ' ');
+              
+              // Fix WATANIA to show as WATANIA TAKAFUL
+              if (cleanProviderName === 'WATANIA' || cleanProviderName.startsWith('WATANIA ')) {
+                cleanProviderName = 'WATANIA TAKAFUL';
+              }
               
               const planId = `${provider}_${planName}`;
               
@@ -1963,24 +1961,16 @@ export default function InsurancePortal() {
         manualPlans // Save manual plans so they can be restored
       };
       
-      // Keep only last 10 reports to prevent quota issues
-      let history = [...reportHistory, reportState];
-      if (history.length > 10) {
-        history = history.slice(-10);
-      }
+      // Save all reports (no limit)
+      const history = [...reportHistory, reportState];
       
       localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
       setReportHistory(history);
     } catch (e) {
       console.error('Failed to save report history:', e);
-      // If quota exceeded, clear old history and try again
+      // If quota exceeded, show message but keep existing history
       if (e instanceof Error && e.name === 'QuotaExceededError') {
-        try {
-          localStorage.removeItem(STORAGE_KEYS.REPORT_HISTORY);
-          setReportHistory([]);
-        } catch (clearError) {
-          console.error('Failed to clear history:', clearError);
-        }
+        alert('Storage quota exceeded. Some old reports may need to be deleted to save new ones.');
       }
     }
   };
@@ -2100,6 +2090,11 @@ export default function InsurancePortal() {
                 else if (provider === 'TAKAFUL_EMARAT') network = 'NEXTCARE';
                 
                 let cleanProviderName = provider.replace('_MEDNET', '').replace('_NEXTCARE', '').replace('_NAS', '').replace(/_/g, ' ');
+                
+                // Fix WATANIA to show as WATANIA TAKAFUL
+                if (cleanProviderName === 'WATANIA' || cleanProviderName.startsWith('WATANIA ')) {
+                  cleanProviderName = 'WATANIA TAKAFUL';
+                }
                 
                 const planId = `${provider}_${planName}`;
                 
@@ -2444,7 +2439,7 @@ export default function InsurancePortal() {
 
     ${advisorComment ? `
     <div class="advisor-box">
-      <b>Advisor Comment:</b> ${advisorComment}
+      <b>Advisor Comment:</b><br>${advisorComment.replace(/\n/g, '<br>')}
     </div>
     ` : ''}
 
@@ -2723,7 +2718,7 @@ export default function InsurancePortal() {
 </head>
 <body>
 <div class="cover-page">
-  <img src="https://i.imgur.com/NNaqoli.png" alt="NSIB Cover" />
+  <img src="https://i.imgur.com/oIjCU2a.png" alt="NSIB Cover" />
 </div>
 ${consolidatedTable}
 </body>
