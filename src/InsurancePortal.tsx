@@ -1076,6 +1076,11 @@ export default function InsurancePortal() {
   const [networkSearch, setNetworkSearch] = useState(''); // TPA
   const [copaySearch, setCopaySearch] = useState(''); // Copay filter
 
+  // CLOUD SYNC STATUS
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+  const [pendingCloudEdits, setPendingCloudEdits] = useState<{ [planId: string]: { plan?: string; network?: string; copay?: string } }>({});
+  const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
   // Load benefits and history
   useEffect(() => {
     // Load local plan edits from localStorage
@@ -1213,6 +1218,84 @@ export default function InsurancePortal() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.CUSTOM_PROVIDERS, JSON.stringify(customProviders));
   }, [customProviders]);
+
+  // DEBOUNCED CLOUD SYNC - Batch all pending edits and save after 2 seconds of no activity
+  useEffect(() => {
+    if (Object.keys(pendingCloudEdits).length === 0) return;
+    
+    setSyncStatus('pending');
+    
+    // Clear existing timeout
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+    
+    // Set new timeout - save after 2 seconds of no new edits
+    syncTimeoutRef.current = setTimeout(async () => {
+      setSyncStatus('saving');
+      console.log('📤 Batch saving', Object.keys(pendingCloudEdits).length, 'plan edits to cloud...');
+      
+      let successCount = 0;
+      let failCount = 0;
+      
+      // Save all pending edits one by one (but with small delay to avoid rate limits)
+      const editEntries = Object.entries(pendingCloudEdits);
+      
+      for (let i = 0; i < editEntries.length; i++) {
+        const [planId, editData] = editEntries[i];
+        try {
+          const response = await fetch('/api/benefits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              planKey: `PLAN_EDIT_${planId}`, 
+              benefits: { ...editData, _isPlanEdit: true } 
+            })
+          });
+          
+          const result = await response.json();
+          if (result.success) {
+            successCount++;
+            // Update cloudPlanEdits with saved data
+            setCloudPlanEdits(prev => ({ ...prev, [planId]: editData }));
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          console.error('Error saving plan edit:', planId, error);
+          failCount++;
+        }
+        
+        // Small delay between API calls to avoid rate limiting
+        if (i < editEntries.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      // Clear pending edits that were saved
+      setPendingCloudEdits({});
+      
+      if (failCount === 0) {
+        setSyncStatus('saved');
+        console.log(`✅ All ${successCount} plan edits saved to cloud!`);
+        // Reset status after 3 seconds
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      } else {
+        setSyncStatus('error');
+        console.error(`⚠️ ${failCount} of ${editEntries.length} edits failed to save`);
+        alert(`⚠️ ${failCount} of ${editEntries.length} plan edits failed to save to cloud. They are saved locally.`);
+        // Reset status after 5 seconds
+        setTimeout(() => setSyncStatus('idle'), 5000);
+      }
+    }, 2000); // 2 second debounce
+    
+    // Cleanup on unmount
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [pendingCloudEdits]);
 
   // Get plan benefits with local overrides
   const getPlanBenefits = (provider: string, planName: string, planId?: string): PlanBenefits => {
@@ -1719,7 +1802,7 @@ export default function InsurancePortal() {
   };
 
   // Save edited result plan (cloud for plan/network/copay, local for premium)
-  const saveEditedResultPlan = async () => {
+  const saveEditedResultPlan = () => {
     if (!editingResultPlan || !editingResultPlan.plan || !editingResultPlan.premium) {
       alert('Please enter plan name and premium');
       return;
@@ -1743,14 +1826,17 @@ export default function InsurancePortal() {
     // Local data for premium only (member-specific)
     const premiumValue = parseFloat(editingResultPlan.premium);
 
-    // Save premium to localStorage with member-specific key
+    // Save premium to localStorage with member-specific key (immediate)
     setLocalPlanEdits(prev => ({
       ...prev,
       [memberPlanKey]: { premium: premiumValue }
     }));
     
-    // Update cloudPlanEdits state immediately
+    // Update cloudPlanEdits state immediately for UI
     setCloudPlanEdits(prev => ({ ...prev, [planId]: cloudEditData }));
+    
+    // Queue for batched cloud save (will save after 2 seconds of no activity)
+    setPendingCloudEdits(prev => ({ ...prev, [planId]: cloudEditData }));
 
     // Update current session state for ALL members with this plan (for plan/network/copay)
     // But only update premium for the current member
@@ -1776,33 +1862,7 @@ export default function InsurancePortal() {
       return updated;
     });
 
-    // Save plan/network/copay to cloud using the existing benefits API with a prefix
-    try {
-      const savePayload = { 
-        planKey: `PLAN_EDIT_${planId}`, 
-        benefits: { ...cloudEditData, _isPlanEdit: true } 
-      };
-      console.log('📤 Saving plan edit to cloud:', savePayload);
-      
-      const response = await fetch('/api/benefits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(savePayload)
-      });
-      
-      const result = await response.json();
-      console.log('📥 Save response:', result);
-      
-      if (result.success) {
-        alert('✅ Plan details (name, network, copay) saved to cloud! Premium updated for this member only.');
-      } else {
-        alert('⚠️ Save may have failed. Check console for details.');
-      }
-    } catch (error) {
-      console.error('Error saving plan edits to cloud:', error);
-      alert('❌ Cloud sync failed! Changes saved locally only.');
-    }
-
+    // Close modal (no alert - sync status shown in UI)
     setShowEditResultPlanModal(false);
     setEditingResultPlan(null);
     setEditingMemberId(null);
@@ -2874,6 +2934,59 @@ ${consolidatedTable}
                 <span className="text-sm text-green-700">
                   💾 {Object.keys(localPlanEdits).length} plan edits and {Object.keys(localBenefitsEdits).length} benefits edits saved locally
                 </span>
+              </div>
+            )}
+            
+            {/* Cloud sync status indicator */}
+            {syncStatus !== 'idle' && (
+              <div className={`mt-2 p-3 rounded-lg border flex items-center gap-2 ${
+                syncStatus === 'pending' ? 'bg-yellow-50 border-yellow-200' :
+                syncStatus === 'saving' ? 'bg-blue-50 border-blue-200' :
+                syncStatus === 'saved' ? 'bg-green-50 border-green-200' :
+                'bg-red-50 border-red-200'
+              }`}>
+                {syncStatus === 'pending' && (
+                  <>
+                    <span className="animate-pulse">⏳</span>
+                    <span className="text-sm text-yellow-700">
+                      {Object.keys(pendingCloudEdits).length} edits pending... (auto-saves in 2s)
+                    </span>
+                    <button 
+                      onClick={() => {
+                        // Clear timeout and trigger immediate save
+                        if (syncTimeoutRef.current) {
+                          clearTimeout(syncTimeoutRef.current);
+                          syncTimeoutRef.current = null;
+                        }
+                        // Trigger save by setting pending edits again (will fire useEffect)
+                        const current = { ...pendingCloudEdits };
+                        setPendingCloudEdits({});
+                        setTimeout(() => setPendingCloudEdits(current), 10);
+                      }}
+                      className="ml-auto px-2 py-1 text-xs bg-yellow-500 hover:bg-yellow-600 text-white rounded"
+                    >
+                      Sync Now
+                    </button>
+                  </>
+                )}
+                {syncStatus === 'saving' && (
+                  <>
+                    <span className="animate-spin">🔄</span>
+                    <span className="text-sm text-blue-700">Syncing to cloud...</span>
+                  </>
+                )}
+                {syncStatus === 'saved' && (
+                  <>
+                    <span>☁️</span>
+                    <span className="text-sm text-green-700">✓ All changes synced to cloud!</span>
+                  </>
+                )}
+                {syncStatus === 'error' && (
+                  <>
+                    <span>⚠️</span>
+                    <span className="text-sm text-red-700">Some edits failed to sync. Saved locally.</span>
+                  </>
+                )}
               </div>
             )}
           </div>
