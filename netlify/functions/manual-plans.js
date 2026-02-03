@@ -1,5 +1,4 @@
-import { getStore } from "@netlify/blobs";
-import type { Context } from "@netlify/functions";
+const { getStore } = require("@netlify/blobs");
 
 // CORS and Cache headers - NO CACHING to ensure fresh data
 const headers = {
@@ -12,19 +11,19 @@ const headers = {
   'Expires': '0'
 };
 
-export default async (req: Request, context: Context) => {
+exports.handler = async function (event, context) {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers });
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
   }
 
   const store = getStore("im-manual-plans");
 
   try {
     // GET - Retrieve all manual plans
-    if (req.method === 'GET') {
+    if (event.httpMethod === 'GET') {
       const { blobs } = await store.list();
-      const plans: { [key: string]: any[] } = {};
+      const plans = {};
       
       for (const blob of blobs) {
         try {
@@ -37,67 +36,74 @@ export default async (req: Request, context: Context) => {
         }
       }
       
-      return new Response(JSON.stringify({ success: true, plans }), { 
-        status: 200, 
-        headers 
-      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, plans })
+      };
     }
 
     // POST - Save manual plans for a provider
-    if (req.method === 'POST') {
-      const body = await req.json();
+    if (event.httpMethod === 'POST') {
+      const body = JSON.parse(event.body || '{}');
       const { providerKey, plans } = body;
       
       if (!providerKey || !plans) {
-        return new Response(JSON.stringify({ success: false, error: 'Missing providerKey or plans' }), { 
-          status: 400, 
-          headers 
-        });
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ success: false, error: 'Missing providerKey or plans' })
+        };
       }
 
       // Add timestamp for tracking
-      const dataToStore = plans.map((plan: any) => ({
+      const dataToStore = plans.map((plan) => ({
         ...plan,
         _updatedAt: new Date().toISOString()
       }));
 
       await store.setJSON(providerKey, dataToStore);
       
-      return new Response(JSON.stringify({ success: true, providerKey }), { 
-        status: 200, 
-        headers 
-      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, providerKey })
+      };
     }
 
     // DELETE - Remove manual plans for a provider
-    if (req.method === 'DELETE') {
-      const body = await req.json();
+    if (event.httpMethod === 'DELETE') {
+      const body = JSON.parse(event.body || '{}');
       const { providerKey } = body;
       
       if (!providerKey) {
-        return new Response(JSON.stringify({ success: false, error: 'Missing providerKey' }), { 
-          status: 400, 
-          headers 
-        });
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ success: false, error: 'Missing providerKey' })
+        };
       }
 
       await store.delete(providerKey);
       
-      return new Response(JSON.stringify({ success: true, deleted: providerKey }), { 
-        status: 200, 
-        headers 
-      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, deleted: providerKey })
+      };
     }
 
-    return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), { 
-      status: 405, 
-      headers 
-    });
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ success: false, error: 'Method not allowed' })
+    };
   } catch (error) {
     console.error('Manual Plans API error:', error);
-    return new Response(JSON.stringify({ success: false, error: String(error) }), { 
-      status: 500, 
-      headers 
-    });
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ success: false, error: String(error) })
+    };
   }
 };

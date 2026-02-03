@@ -1,5 +1,4 @@
-import { getStore } from "@netlify/blobs";
-import type { Context } from "@netlify/functions";
+const { getStore } = require("@netlify/blobs");
 
 // CORS and Cache headers - NO CACHING to ensure fresh data
 const headers = {
@@ -12,19 +11,19 @@ const headers = {
   'Expires': '0'
 };
 
-export default async (req: Request, context: Context) => {
+exports.handler = async function (event, context) {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers });
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
   }
 
   const store = getStore("im-benefits");
 
   try {
     // GET - Retrieve all benefits
-    if (req.method === 'GET') {
+    if (event.httpMethod === 'GET') {
       const { blobs } = await store.list();
-      const benefits: { [key: string]: any } = {};
+      const benefits = {};
       
       for (const blob of blobs) {
         try {
@@ -37,22 +36,24 @@ export default async (req: Request, context: Context) => {
         }
       }
       
-      return new Response(JSON.stringify({ success: true, benefits }), { 
-        status: 200, 
-        headers 
-      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, benefits })
+      };
     }
 
     // POST - Save benefits for a plan
-    if (req.method === 'POST') {
-      const body = await req.json();
+    if (event.httpMethod === 'POST') {
+      const body = JSON.parse(event.body || '{}');
       const { planKey, benefits } = body;
       
       if (!planKey || !benefits) {
-        return new Response(JSON.stringify({ success: false, error: 'Missing planKey or benefits' }), { 
-          status: 400, 
-          headers 
-        });
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ success: false, error: 'Missing planKey or benefits' })
+        };
       }
 
       // Add timestamp for tracking
@@ -63,41 +64,46 @@ export default async (req: Request, context: Context) => {
 
       await store.setJSON(planKey, dataToStore);
       
-      return new Response(JSON.stringify({ success: true, planKey }), { 
-        status: 200, 
-        headers 
-      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, planKey })
+      };
     }
 
     // DELETE - Remove benefits for a plan
-    if (req.method === 'DELETE') {
-      const body = await req.json();
+    if (event.httpMethod === 'DELETE') {
+      const body = JSON.parse(event.body || '{}');
       const { planKey } = body;
       
       if (!planKey) {
-        return new Response(JSON.stringify({ success: false, error: 'Missing planKey' }), { 
-          status: 400, 
-          headers 
-        });
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ success: false, error: 'Missing planKey' })
+        };
       }
 
       await store.delete(planKey);
       
-      return new Response(JSON.stringify({ success: true, deleted: planKey }), { 
-        status: 200, 
-        headers 
-      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, deleted: planKey })
+      };
     }
 
-    return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), { 
-      status: 405, 
-      headers 
-    });
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ success: false, error: 'Method not allowed' })
+    };
   } catch (error) {
     console.error('Benefits API error:', error);
-    return new Response(JSON.stringify({ success: false, error: String(error) }), { 
-      status: 500, 
-      headers 
-    });
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ success: false, error: String(error) })
+    };
   }
 };
