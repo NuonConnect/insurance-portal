@@ -1080,6 +1080,70 @@ export default function InsurancePortal() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
   const [pendingCloudEdits, setPendingCloudEdits] = useState<{ [planId: string]: { plan?: string; network?: string; copay?: string } }>({});
   const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+
+  // Function to refresh all cloud data
+  const refreshFromCloud = async () => {
+    setIsRefreshing(true);
+    console.log('🔄 Refreshing all data from cloud...');
+    
+    try {
+      // Load benefits and plan edits
+      const benefitsResponse = await fetch(`/api/benefits?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+      });
+      if (benefitsResponse.ok) {
+        const data = await benefitsResponse.json();
+        if (data.success && data.benefits) {
+          const cleanBenefits: { [key: string]: PlanBenefits } = {};
+          const cleanPlanEdits: { [key: string]: { plan?: string; network?: string; copay?: string } } = {};
+          
+          Object.keys(data.benefits).forEach(key => {
+            const { _updatedAt, ...benefitData } = data.benefits[key];
+            if (key.startsWith('PLAN_EDIT_') || benefitData._isPlanEdit) {
+              const { _isPlanEdit, ...editData } = benefitData;
+              const planId = key.replace('PLAN_EDIT_', '');
+              cleanPlanEdits[planId] = editData;
+            } else {
+              cleanBenefits[key] = benefitData as PlanBenefits;
+            }
+          });
+          setCloudBenefits(cleanBenefits);
+          setCloudPlanEdits(cleanPlanEdits);
+          console.log('✅ Benefits & plan edits refreshed:', Object.keys(cleanPlanEdits).length, 'plan edits');
+        }
+      }
+
+      // Load manual plans
+      const plansResponse = await fetch(`/api/manual-plans?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+      });
+      if (plansResponse.ok) {
+        const data = await plansResponse.json();
+        if (data.success && data.plans) {
+          const plansWithBenefits: { [key: string]: any[] } = {};
+          Object.keys(data.plans).forEach(providerKey => {
+            plansWithBenefits[providerKey] = data.plans[providerKey].map((plan: any) => ({
+              ...plan,
+              benefits: plan.benefits || defaultBenefits
+            }));
+          });
+          setManualPlans(plansWithBenefits);
+          console.log('✅ Manual plans refreshed');
+        }
+      }
+
+      setLastRefreshTime(new Date());
+      console.log('✅ All cloud data refreshed successfully!');
+    } catch (error) {
+      console.error('❌ Error refreshing from cloud:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Load benefits and history
   useEffect(() => {
@@ -1126,7 +1190,11 @@ export default function InsurancePortal() {
     // Load cloud benefits and plan edits
     const loadCloudBenefits = async () => {
       try {
-        const response = await fetch('/api/benefits');
+        // Add cache-busting to prevent stale data
+        const response = await fetch(`/api/benefits?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+        });
         if (response.ok) {
           const data = await response.json();
           console.log('📥 Raw cloud data:', data);
@@ -1160,7 +1228,11 @@ export default function InsurancePortal() {
     // Load cloud manual plans
     const loadCloudManualPlans = async () => {
       try {
-        const response = await fetch('/api/manual-plans');
+        // Add cache-busting to prevent stale data
+        const response = await fetch(`/api/manual-plans?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.plans) {
@@ -2400,8 +2472,7 @@ export default function InsurancePortal() {
     const memberCount = allMembersWithSelections.length;
 
     // Dynamic column width based on number of plans
-    const planColWidth = numPlans <= 2 ? 200 : numPlans <= 3 ? 160 : numPlans <= 4 ? 130 : numPlans <= 5 ? 110 : numPlans <= 6 ? 95 : 85;
-    const benefitColWidth = numPlans <= 3 ? 130 : numPlans <= 5 ? 110 : 100;
+    const planColWidth = numPlans <= 2 ? 220 : numPlans <= 3 ? 180 : numPlans <= 4 ? 150 : numPlans <= 5 ? 130 : 110;
     
     // Build subtitle based on number of members
     const subtitleText = numMembers === 1 
@@ -2427,10 +2498,9 @@ export default function InsurancePortal() {
       <span><b>Date:</b> ${today}</span>
     </div>
 
-    <div class="table-container">
     <table class="main-table" style="table-layout:fixed;">
       <colgroup>
-        <col style="width:${benefitColWidth}px;">
+        <col style="width:140px;">
         ${selectedPlans.map(() => `<col style="width:${planColWidth}px;">`).join('')}
       </colgroup>
       <thead>
@@ -2498,7 +2568,6 @@ export default function InsurancePortal() {
         </tr>
       </tbody>
     </table>
-    </div>
 
     ${advisorComment ? `
     <div class="advisor-box">
@@ -2545,8 +2614,8 @@ export default function InsurancePortal() {
       width: 297mm;
       height: 210mm;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 7px;
-      line-height: 1.1;
+      font-size: 9px;
+      line-height: 1.3;
       background: white;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
@@ -2573,7 +2642,7 @@ export default function InsurancePortal() {
     .page-wrapper {
       width: 297mm;
       height: 210mm;
-      padding: 5mm;
+      padding: 8mm;
       position: relative;
       background: white;
       page-break-after: always;
@@ -2582,18 +2651,7 @@ export default function InsurancePortal() {
     }
     
     .page-content {
-      height: calc(210mm - 10mm - 32px);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    
-    /* Table container - fills remaining space */
-    .table-container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
+      height: calc(210mm - 16mm - 45px);
       overflow: hidden;
     }
     
@@ -2602,26 +2660,26 @@ export default function InsurancePortal() {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 3px;
-      padding-bottom: 3px;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
       border-bottom: 2px solid #f97316;
     }
-    .logo { height: 28px; }
-    .mascot { height: 36px; }
-    .title-block { text-align: center; flex: 1; padding: 0 8px; }
-    .title-block h1 { font-size: 12px; color: #f97316; margin: 0 0 1px 0; font-weight: bold; }
-    .title-block h2 { font-size: 9px; color: #374151; margin: 0; font-weight: normal; }
+    .logo { height: 38px; }
+    .mascot { height: 50px; }
+    .title-block { text-align: center; flex: 1; padding: 0 15px; }
+    .title-block h1 { font-size: 15px; color: #f97316; margin: 0 0 3px 0; font-weight: bold; }
+    .title-block h2 { font-size: 11px; color: #374151; margin: 0; font-weight: normal; }
     
     /* Info Bar */
     .info-bar {
       display: flex;
       justify-content: center;
-      gap: 20px;
-      padding: 2px 0;
-      margin-bottom: 3px;
+      gap: 30px;
+      padding: 5px 0;
+      margin-bottom: 6px;
       background: #f8fafc;
-      border-radius: 2px;
-      font-size: 7px;
+      border-radius: 4px;
+      font-size: 9px;
     }
     .info-bar span { color: #374151; }
     .info-bar b { color: #1e40af; }
@@ -2630,14 +2688,13 @@ export default function InsurancePortal() {
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 6px;
-      margin-bottom: 2px;
-      flex: 1;
+      font-size: 8px;
+      margin-bottom: 6px;
     }
     .main-table th,
     .main-table td {
       border: 1px solid #d1d5db;
-      padding: 2px 2px;
+      padding: 4px 5px;
       text-align: center;
       vertical-align: middle;
       word-wrap: break-word;
@@ -2647,54 +2704,49 @@ export default function InsurancePortal() {
       background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
       color: white;
       font-weight: bold;
-      font-size: 7px;
-      padding: 3px 2px;
+      font-size: 9px;
+      padding: 6px 5px;
     }
-    .col-benefit { text-align: left !important; background: #1e40af !important; width: 110px; }
-    .col-plan { min-width: 70px; }
+    .col-benefit { text-align: left !important; background: #1e40af !important; }
+    .col-plan { min-width: 100px; }
     
     .cell-label {
       text-align: left !important;
       font-weight: 600;
       color: #1f2937;
       background: #f8fafc;
-      padding: 2px 3px !important;
-      font-size: 6px;
     }
     .cell-value { 
-      font-size: 6px; 
+      font-size: 8px; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 2px 2px !important;
     }
     .cell-detail { 
-      font-size: 5.5px; 
-      line-height: 1.1; 
+      font-size: 7px; 
+      line-height: 1.2; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 1px 2px !important; 
+      padding: 3px 4px !important; 
     }
     .cell-small { 
-      font-size: 5px; 
-      line-height: 1.05; 
+      font-size: 6.5px; 
+      line-height: 1.15; 
       text-align: center !important;
       vertical-align: middle !important;
     }
     .cell-premium { 
       font-weight: 600; 
       color: #059669; 
-      font-size: 7px; 
+      font-size: 9px; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 2px 2px !important;
     }
     
     .row-alt { background: #fffbeb; }
     .row-alt .cell-label { background: #fef3c7; }
     
     .row-member { background: #f0fdf4; }
-    .row-member .cell-label { background: #dcfce7; font-size: 6.5px; padding: 2px 3px !important; }
-    .row-member td { padding: 2px 2px !important; }
+    .row-member .cell-label { background: #dcfce7; }
     
     .row-subtotal { background: #e0f2fe; }
     .cell-subtotal-label {
@@ -2702,17 +2754,17 @@ export default function InsurancePortal() {
       font-weight: 600;
       color: #0369a1;
       background: #bae6fd !important;
-      font-size: 6px;
-      padding: 2px 4px !important;
+      font-size: 8px;
+      padding: 4px 8px !important;
     }
     .cell-subtotal-value {
       font-weight: 600;
       color: #0284c7;
-      font-size: 7px;
+      font-size: 9px;
       background: #e0f2fe;
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 2px 3px !important;
+      padding: 4px 8px !important;
     }
     
     .row-total { background: #dbeafe; }
@@ -2721,27 +2773,25 @@ export default function InsurancePortal() {
       font-weight: bold;
       color: #1e40af;
       background: #bfdbfe !important;
-      font-size: 7px;
-      padding: 3px 4px !important;
+      font-size: 9px;
     }
     .cell-total-value {
       font-weight: bold;
       color: #1d4ed8;
-      font-size: 8px;
+      font-size: 11px;
       background: #dbeafe;
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 3px 3px !important;
     }
     
     /* Tags */
     .tag {
       display: inline-block;
-      padding: 1px 3px;
-      border-radius: 4px;
-      font-size: 5px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-size: 7px;
       font-weight: bold;
-      margin-top: 1px;
+      margin-top: 2px;
     }
     .tag-renewal { background: #fbbf24; color: #78350f; }
     .tag-alternative { background: #8b5cf6; color: white; }
@@ -2750,34 +2800,32 @@ export default function InsurancePortal() {
     /* Advisor & Disclaimer */
     .advisor-box {
       background: #e0f2fe;
-      border-left: 2px solid #2563eb;
-      padding: 2px 6px;
-      margin-top: auto;
-      margin-bottom: 1px;
-      font-size: 6px;
+      border-left: 3px solid #2563eb;
+      padding: 5px 8px;
+      margin-bottom: 5px;
+      font-size: 8px;
       color: #1e3a8a;
     }
     .disclaimer-box {
       background: #fef3c7;
-      border-left: 2px solid #f59e0b;
-      padding: 2px 6px;
-      font-size: 5.5px;
+      border-left: 3px solid #f59e0b;
+      padding: 4px 8px;
+      font-size: 7px;
       color: #78350f;
-      line-height: 1.15;
     }
     
     /* Footer */
     .page-footer {
       position: absolute;
-      bottom: 5mm;
-      left: 5mm;
-      right: 5mm;
+      bottom: 8mm;
+      left: 8mm;
+      right: 8mm;
       display: flex;
       justify-content: space-between;
       background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%);
-      padding: 4px 8px;
-      border-radius: 3px;
-      font-size: 6px;
+      padding: 8px 12px;
+      border-radius: 5px;
+      font-size: 8px;
       color: #78350f;
     }
     .footer-left { text-align: left; }
@@ -2960,6 +3008,27 @@ ${consolidatedTable}
                 </span>
               </div>
             )}
+            
+            {/* Refresh from Cloud button */}
+            <div className="mt-4 flex items-center gap-3">
+              <button 
+                onClick={refreshFromCloud}
+                disabled={isRefreshing}
+                className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                  isRefreshing 
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                }`}
+              >
+                <span className={isRefreshing ? 'animate-spin' : ''}>🔄</span>
+                {isRefreshing ? 'Refreshing...' : 'Refresh from Cloud'}
+              </button>
+              {lastRefreshTime && (
+                <span className="text-xs text-gray-500">
+                  Last refreshed: {lastRefreshTime.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
             
             {/* Cloud sync status indicator */}
             {syncStatus !== 'idle' && (
