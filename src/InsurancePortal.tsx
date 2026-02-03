@@ -2426,6 +2426,7 @@ export default function InsurancePortal() {
       <span><b>Date:</b> ${today}</span>
     </div>
 
+    <div class="table-container">
     <table class="main-table" style="table-layout:fixed;">
       <colgroup>
         <col style="width:140px;">
@@ -2496,6 +2497,7 @@ export default function InsurancePortal() {
         </tr>
       </tbody>
     </table>
+    </div>
 
     ${advisorComment ? `
     <div class="advisor-box">
@@ -2581,6 +2583,16 @@ export default function InsurancePortal() {
     .page-content {
       height: calc(210mm - 16mm - 45px);
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* Table container - fills remaining space */
+    .table-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     
     /* Header */
@@ -2618,11 +2630,12 @@ export default function InsurancePortal() {
       border-collapse: collapse;
       font-size: 8px;
       margin-bottom: 6px;
+      flex: 1;
     }
     .main-table th,
     .main-table td {
       border: 1px solid #d1d5db;
-      padding: 4px 5px;
+      padding: 5px 6px;
       text-align: center;
       vertical-align: middle;
       word-wrap: break-word;
@@ -2633,48 +2646,52 @@ export default function InsurancePortal() {
       color: white;
       font-weight: bold;
       font-size: 9px;
-      padding: 6px 5px;
+      padding: 7px 6px;
     }
-    .col-benefit { text-align: left !important; background: #1e40af !important; }
-    .col-plan { min-width: 100px; }
+    .col-benefit { text-align: left !important; background: #1e40af !important; width: 180px; }
+    .col-plan { min-width: 110px; }
     
     .cell-label {
       text-align: left !important;
       font-weight: 600;
       color: #1f2937;
       background: #f8fafc;
+      padding: 6px 8px !important;
     }
     .cell-value { 
-      font-size: 8px; 
+      font-size: 8.5px; 
       text-align: center !important;
       vertical-align: middle !important;
+      padding: 6px 5px !important;
     }
     .cell-detail { 
-      font-size: 7px; 
-      line-height: 1.2; 
+      font-size: 7.5px; 
+      line-height: 1.25; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 3px 4px !important; 
+      padding: 5px 5px !important; 
     }
     .cell-small { 
-      font-size: 6.5px; 
-      line-height: 1.15; 
+      font-size: 7px; 
+      line-height: 1.2; 
       text-align: center !important;
       vertical-align: middle !important;
     }
     .cell-premium { 
       font-weight: 600; 
       color: #059669; 
-      font-size: 9px; 
+      font-size: 10px; 
       text-align: center !important;
       vertical-align: middle !important;
+      padding: 6px 5px !important;
     }
     
     .row-alt { background: #fffbeb; }
     .row-alt .cell-label { background: #fef3c7; }
     
     .row-member { background: #f0fdf4; }
-    .row-member .cell-label { background: #dcfce7; }
+    .row-member .cell-label { background: #dcfce7; font-size: 9px; padding: 6px 8px !important; }
+    .row-member td { padding: 6px 5px !important; }
     
     .row-subtotal { background: #e0f2fe; }
     .cell-subtotal-label {
@@ -2682,17 +2699,17 @@ export default function InsurancePortal() {
       font-weight: 600;
       color: #0369a1;
       background: #bae6fd !important;
-      font-size: 8px;
-      padding: 4px 8px !important;
+      font-size: 8.5px;
+      padding: 6px 10px !important;
     }
     .cell-subtotal-value {
       font-weight: 600;
       color: #0284c7;
-      font-size: 9px;
+      font-size: 9.5px;
       background: #e0f2fe;
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 4px 8px !important;
+      padding: 6px 8px !important;
     }
     
     .row-total { background: #dbeafe; }
@@ -2701,15 +2718,17 @@ export default function InsurancePortal() {
       font-weight: bold;
       color: #1e40af;
       background: #bfdbfe !important;
-      font-size: 9px;
+      font-size: 10px;
+      padding: 8px 10px !important;
     }
     .cell-total-value {
       font-weight: bold;
       color: #1d4ed8;
-      font-size: 11px;
+      font-size: 12px;
       background: #dbeafe;
       text-align: center !important;
       vertical-align: middle !important;
+      padding: 8px 8px !important;
     }
     
     /* Tags */
@@ -2729,16 +2748,17 @@ export default function InsurancePortal() {
     .advisor-box {
       background: #e0f2fe;
       border-left: 3px solid #2563eb;
-      padding: 5px 8px;
-      margin-bottom: 5px;
-      font-size: 8px;
+      padding: 6px 10px;
+      margin-top: auto;
+      margin-bottom: 4px;
+      font-size: 8.5px;
       color: #1e3a8a;
     }
     .disclaimer-box {
       background: #fef3c7;
       border-left: 3px solid #f59e0b;
-      padding: 4px 8px;
-      font-size: 7px;
+      padding: 5px 10px;
+      font-size: 7.5px;
       color: #78350f;
     }
     
