@@ -2400,7 +2400,8 @@ export default function InsurancePortal() {
     const memberCount = allMembersWithSelections.length;
 
     // Dynamic column width based on number of plans
-    const planColWidth = numPlans <= 2 ? 220 : numPlans <= 3 ? 180 : numPlans <= 4 ? 150 : numPlans <= 5 ? 130 : 110;
+    const planColWidth = numPlans <= 2 ? 200 : numPlans <= 3 ? 160 : numPlans <= 4 ? 130 : numPlans <= 5 ? 110 : numPlans <= 6 ? 95 : 85;
+    const benefitColWidth = numPlans <= 3 ? 130 : numPlans <= 5 ? 110 : 100;
     
     // Build subtitle based on number of members
     const subtitleText = numMembers === 1 
@@ -2429,7 +2430,7 @@ export default function InsurancePortal() {
     <div class="table-container">
     <table class="main-table" style="table-layout:fixed;">
       <colgroup>
-        <col style="width:140px;">
+        <col style="width:${benefitColWidth}px;">
         ${selectedPlans.map(() => `<col style="width:${planColWidth}px;">`).join('')}
       </colgroup>
       <thead>
@@ -2544,8 +2545,8 @@ export default function InsurancePortal() {
       width: 297mm;
       height: 210mm;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 9px;
-      line-height: 1.3;
+      font-size: 7px;
+      line-height: 1.1;
       background: white;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
@@ -2572,7 +2573,7 @@ export default function InsurancePortal() {
     .page-wrapper {
       width: 297mm;
       height: 210mm;
-      padding: 8mm;
+      padding: 5mm;
       position: relative;
       background: white;
       page-break-after: always;
@@ -2581,7 +2582,7 @@ export default function InsurancePortal() {
     }
     
     .page-content {
-      height: calc(210mm - 16mm - 45px);
+      height: calc(210mm - 10mm - 32px);
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -2593,6 +2594,7 @@ export default function InsurancePortal() {
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
     }
     
     /* Header */
@@ -2600,26 +2602,26 @@ export default function InsurancePortal() {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 6px;
-      padding-bottom: 6px;
+      margin-bottom: 3px;
+      padding-bottom: 3px;
       border-bottom: 2px solid #f97316;
     }
-    .logo { height: 38px; }
-    .mascot { height: 50px; }
-    .title-block { text-align: center; flex: 1; padding: 0 15px; }
-    .title-block h1 { font-size: 15px; color: #f97316; margin: 0 0 3px 0; font-weight: bold; }
-    .title-block h2 { font-size: 11px; color: #374151; margin: 0; font-weight: normal; }
+    .logo { height: 28px; }
+    .mascot { height: 36px; }
+    .title-block { text-align: center; flex: 1; padding: 0 8px; }
+    .title-block h1 { font-size: 12px; color: #f97316; margin: 0 0 1px 0; font-weight: bold; }
+    .title-block h2 { font-size: 9px; color: #374151; margin: 0; font-weight: normal; }
     
     /* Info Bar */
     .info-bar {
       display: flex;
       justify-content: center;
-      gap: 30px;
-      padding: 5px 0;
-      margin-bottom: 6px;
+      gap: 20px;
+      padding: 2px 0;
+      margin-bottom: 3px;
       background: #f8fafc;
-      border-radius: 4px;
-      font-size: 9px;
+      border-radius: 2px;
+      font-size: 7px;
     }
     .info-bar span { color: #374151; }
     .info-bar b { color: #1e40af; }
@@ -2628,14 +2630,14 @@ export default function InsurancePortal() {
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 8px;
-      margin-bottom: 6px;
+      font-size: 6px;
+      margin-bottom: 2px;
       flex: 1;
     }
     .main-table th,
     .main-table td {
       border: 1px solid #d1d5db;
-      padding: 5px 6px;
+      padding: 2px 2px;
       text-align: center;
       vertical-align: middle;
       word-wrap: break-word;
@@ -2645,53 +2647,54 @@ export default function InsurancePortal() {
       background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
       color: white;
       font-weight: bold;
-      font-size: 9px;
-      padding: 7px 6px;
+      font-size: 7px;
+      padding: 3px 2px;
     }
-    .col-benefit { text-align: left !important; background: #1e40af !important; width: 180px; }
-    .col-plan { min-width: 110px; }
+    .col-benefit { text-align: left !important; background: #1e40af !important; width: 110px; }
+    .col-plan { min-width: 70px; }
     
     .cell-label {
       text-align: left !important;
       font-weight: 600;
       color: #1f2937;
       background: #f8fafc;
-      padding: 6px 8px !important;
+      padding: 2px 3px !important;
+      font-size: 6px;
     }
     .cell-value { 
-      font-size: 8.5px; 
+      font-size: 6px; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 6px 5px !important;
+      padding: 2px 2px !important;
     }
     .cell-detail { 
-      font-size: 7.5px; 
-      line-height: 1.25; 
+      font-size: 5.5px; 
+      line-height: 1.1; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 5px 5px !important; 
+      padding: 1px 2px !important; 
     }
     .cell-small { 
-      font-size: 7px; 
-      line-height: 1.2; 
+      font-size: 5px; 
+      line-height: 1.05; 
       text-align: center !important;
       vertical-align: middle !important;
     }
     .cell-premium { 
       font-weight: 600; 
       color: #059669; 
-      font-size: 10px; 
+      font-size: 7px; 
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 6px 5px !important;
+      padding: 2px 2px !important;
     }
     
     .row-alt { background: #fffbeb; }
     .row-alt .cell-label { background: #fef3c7; }
     
     .row-member { background: #f0fdf4; }
-    .row-member .cell-label { background: #dcfce7; font-size: 9px; padding: 6px 8px !important; }
-    .row-member td { padding: 6px 5px !important; }
+    .row-member .cell-label { background: #dcfce7; font-size: 6.5px; padding: 2px 3px !important; }
+    .row-member td { padding: 2px 2px !important; }
     
     .row-subtotal { background: #e0f2fe; }
     .cell-subtotal-label {
@@ -2699,17 +2702,17 @@ export default function InsurancePortal() {
       font-weight: 600;
       color: #0369a1;
       background: #bae6fd !important;
-      font-size: 8.5px;
-      padding: 6px 10px !important;
+      font-size: 6px;
+      padding: 2px 4px !important;
     }
     .cell-subtotal-value {
       font-weight: 600;
       color: #0284c7;
-      font-size: 9.5px;
+      font-size: 7px;
       background: #e0f2fe;
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 6px 8px !important;
+      padding: 2px 3px !important;
     }
     
     .row-total { background: #dbeafe; }
@@ -2718,27 +2721,27 @@ export default function InsurancePortal() {
       font-weight: bold;
       color: #1e40af;
       background: #bfdbfe !important;
-      font-size: 10px;
-      padding: 8px 10px !important;
+      font-size: 7px;
+      padding: 3px 4px !important;
     }
     .cell-total-value {
       font-weight: bold;
       color: #1d4ed8;
-      font-size: 12px;
+      font-size: 8px;
       background: #dbeafe;
       text-align: center !important;
       vertical-align: middle !important;
-      padding: 8px 8px !important;
+      padding: 3px 3px !important;
     }
     
     /* Tags */
     .tag {
       display: inline-block;
-      padding: 1px 6px;
-      border-radius: 8px;
-      font-size: 7px;
+      padding: 1px 3px;
+      border-radius: 4px;
+      font-size: 5px;
       font-weight: bold;
-      margin-top: 2px;
+      margin-top: 1px;
     }
     .tag-renewal { background: #fbbf24; color: #78350f; }
     .tag-alternative { background: #8b5cf6; color: white; }
@@ -2747,33 +2750,34 @@ export default function InsurancePortal() {
     /* Advisor & Disclaimer */
     .advisor-box {
       background: #e0f2fe;
-      border-left: 3px solid #2563eb;
-      padding: 6px 10px;
+      border-left: 2px solid #2563eb;
+      padding: 2px 6px;
       margin-top: auto;
-      margin-bottom: 4px;
-      font-size: 8.5px;
+      margin-bottom: 1px;
+      font-size: 6px;
       color: #1e3a8a;
     }
     .disclaimer-box {
       background: #fef3c7;
-      border-left: 3px solid #f59e0b;
-      padding: 5px 10px;
-      font-size: 7.5px;
+      border-left: 2px solid #f59e0b;
+      padding: 2px 6px;
+      font-size: 5.5px;
       color: #78350f;
+      line-height: 1.15;
     }
     
     /* Footer */
     .page-footer {
       position: absolute;
-      bottom: 8mm;
-      left: 8mm;
-      right: 8mm;
+      bottom: 5mm;
+      left: 5mm;
+      right: 5mm;
       display: flex;
       justify-content: space-between;
       background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%);
-      padding: 8px 12px;
-      border-radius: 5px;
-      font-size: 8px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 6px;
       color: #78350f;
     }
     .footer-left { text-align: left; }
