@@ -1,109 +1,40 @@
-const { getStore } = require("@netlify/blobs");
+// netlify/functions/manual-plans.js
+import { getStore } from "@netlify/blobs";
 
-// CORS and Cache headers - NO CACHING to ensure fresh data
-const headers = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Content-Type': 'application/json',
-  'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-  'Pragma': 'no-cache',
-  'Expires': '0'
-};
+export default async (req, context) => {
+  const store = getStore("insurance-data");
+  const KEY = "manual-plans";
 
-exports.handler = async function (event, context) {
-  // Handle CORS preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0"
+  };
+
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers });
   }
-
-  const store = getStore("im-manual-plans");
 
   try {
-    // GET - Retrieve all manual plans
-    if (event.httpMethod === 'GET') {
-      const { blobs } = await store.list();
-      const plans = {};
-      
-      for (const blob of blobs) {
-        try {
-          const data = await store.get(blob.key, { type: 'json' });
-          if (data) {
-            plans[blob.key] = Array.isArray(data) ? data : [data];
-          }
-        } catch (e) {
-          console.error(`Error reading blob ${blob.key}:`, e);
-        }
-      }
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, plans })
-      };
+    if (req.method === "GET") {
+      const plans = await store.get(KEY, { type: "json" }) || {};
+      return new Response(JSON.stringify({ success: true, plans }), { status: 200, headers });
     }
 
-    // POST - Save manual plans for a provider
-    if (event.httpMethod === 'POST') {
-      const body = JSON.parse(event.body || '{}');
-      const { providerKey, plans } = body;
-      
-      if (!providerKey || !plans) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ success: false, error: 'Missing providerKey or plans' })
-        };
-      }
-
-      // Add timestamp for tracking
-      const dataToStore = plans.map((plan) => ({
-        ...plan,
-        _updatedAt: new Date().toISOString()
-      }));
-
-      await store.setJSON(providerKey, dataToStore);
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, providerKey })
-      };
+    if (req.method === "POST") {
+      const { plans } = await req.json();
+      await store.setJSON(KEY, plans || {});
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers });
     }
 
-    // DELETE - Remove manual plans for a provider
-    if (event.httpMethod === 'DELETE') {
-      const body = JSON.parse(event.body || '{}');
-      const { providerKey } = body;
-      
-      if (!providerKey) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ success: false, error: 'Missing providerKey' })
-        };
-      }
-
-      await store.delete(providerKey);
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, deleted: providerKey })
-      };
-    }
-
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ success: false, error: 'Method not allowed' })
-    };
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers });
   } catch (error) {
-    console.error('Manual Plans API error:', error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ success: false, error: String(error) })
-    };
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 500, headers });
   }
 };
+
+export const config = { path: "/api/manual-plans" };
