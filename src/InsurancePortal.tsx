@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
 
 // ============================================================================
-// CLOUD STORAGE - Uses Netlify Functions (automatic with GitHub deploy)
+// STORAGE ARCHITECTURE - LOCAL-FIRST WITH CLOUD BASELINE
 // ============================================================================
-// No configuration needed! Data is stored in Netlify Blobs automatically.
-// Works across all devices and users.
+// Cloud Storage (Netlify Blobs): READ-ONLY baseline data shared by all users
+// - Existing edits made before this change are visible to everyone
+// - No new data is synced to cloud
+//
+// Local Storage (Browser): PRIVATE to each user
+// - All new edits (benefits, manual plans, plan details) saved here only
+// - Each user's changes are private to their browser
+// - Local edits take priority over cloud data when displaying
 
 // ============================================================================
 // TYPES
@@ -58,7 +64,6 @@ interface InsurancePlan {
   providerKey?: string;
   planLocation?: string;
   salaryCategory?: string;
-  needsManualRate?: boolean;
 }
 
 interface MemberResult {
@@ -1010,8 +1015,7 @@ const findAgeBand = (age: number, provider: string, plan: string): string | null
       if (age === singleAge) return band;
     }
   }
-  // Return 'NO_RATE' instead of null to include plan with 0 premium for manual editing
-  return 'NO_RATE';
+  return null;
 };
 
 // ============================================================================
@@ -1076,75 +1080,6 @@ export default function InsurancePortal() {
   const [networkSearch, setNetworkSearch] = useState(''); // TPA
   const [copaySearch, setCopaySearch] = useState(''); // Copay filter
 
-  // CLOUD SYNC STATUS
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
-  const [pendingCloudEdits, setPendingCloudEdits] = useState<{ [planId: string]: { plan?: string; network?: string; copay?: string } }>({});
-  const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
-
-  // Function to refresh all cloud data
-  const refreshFromCloud = async () => {
-    setIsRefreshing(true);
-    console.log('🔄 Refreshing all data from cloud...');
-    
-    try {
-      // Load benefits and plan edits
-      const benefitsResponse = await fetch(`/api/benefits?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-      });
-      if (benefitsResponse.ok) {
-        const data = await benefitsResponse.json();
-        if (data.success && data.benefits) {
-          const cleanBenefits: { [key: string]: PlanBenefits } = {};
-          const cleanPlanEdits: { [key: string]: { plan?: string; network?: string; copay?: string } } = {};
-          
-          Object.keys(data.benefits).forEach(key => {
-            const { _updatedAt, ...benefitData } = data.benefits[key];
-            if (key.startsWith('PLAN_EDIT_') || benefitData._isPlanEdit) {
-              const { _isPlanEdit, ...editData } = benefitData;
-              const planId = key.replace('PLAN_EDIT_', '');
-              cleanPlanEdits[planId] = editData;
-            } else {
-              cleanBenefits[key] = benefitData as PlanBenefits;
-            }
-          });
-          setCloudBenefits(cleanBenefits);
-          setCloudPlanEdits(cleanPlanEdits);
-          console.log('✅ Benefits & plan edits refreshed:', Object.keys(cleanPlanEdits).length, 'plan edits');
-        }
-      }
-
-      // Load manual plans
-      const plansResponse = await fetch(`/api/manual-plans?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-      });
-      if (plansResponse.ok) {
-        const data = await plansResponse.json();
-        if (data.success && data.plans) {
-          const plansWithBenefits: { [key: string]: any[] } = {};
-          Object.keys(data.plans).forEach(providerKey => {
-            plansWithBenefits[providerKey] = data.plans[providerKey].map((plan: any) => ({
-              ...plan,
-              benefits: plan.benefits || defaultBenefits
-            }));
-          });
-          setManualPlans(plansWithBenefits);
-          console.log('✅ Manual plans refreshed');
-        }
-      }
-
-      setLastRefreshTime(new Date());
-      console.log('✅ All cloud data refreshed successfully!');
-    } catch (error) {
-      console.error('❌ Error refreshing from cloud:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   // Load benefits and history
   useEffect(() => {
     // Load local plan edits from localStorage
@@ -1190,11 +1125,7 @@ export default function InsurancePortal() {
     // Load cloud benefits and plan edits
     const loadCloudBenefits = async () => {
       try {
-        // Add cache-busting to prevent stale data
-        const response = await fetch(`/api/benefits?t=${Date.now()}`, {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-        });
+        const response = await fetch('/api/benefits');
         if (response.ok) {
           const data = await response.json();
           console.log('📥 Raw cloud data:', data);
@@ -1225,30 +1156,77 @@ export default function InsurancePortal() {
     };
     loadCloudBenefits();
 
-    // Load cloud manual plans
+    // Load cloud manual plans (read-only baseline) and merge with local plans
     const loadCloudManualPlans = async () => {
       try {
-        // Add cache-busting to prevent stale data
-        const response = await fetch(`/api/manual-plans?t=${Date.now()}`, {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-        });
+        // First, load from cloud (shared baseline - read-only)
+        let cloudPlans: { [key: string]: any[] } = {};
+        const response = await fetch('/api/manual-plans');
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.plans) {
-            // Ensure each plan has benefits object
-            const plansWithBenefits: { [key: string]: any[] } = {};
             Object.keys(data.plans).forEach(providerKey => {
-              plansWithBenefits[providerKey] = data.plans[providerKey].map((plan: any) => ({
+              cloudPlans[providerKey] = data.plans[providerKey].map((plan: any) => ({
                 ...plan,
-                benefits: plan.benefits || defaultBenefits
+                benefits: plan.benefits || defaultBenefits,
+                _isFromCloud: true  // Mark as cloud data
               }));
             });
-            setManualPlans(plansWithBenefits);
           }
         }
+        
+        // Then, load local plans from localStorage (user's private additions)
+        let localPlans: { [key: string]: any[] } = {};
+        try {
+          const localData = localStorage.getItem(STORAGE_KEYS.MANUAL_PLANS);
+          if (localData) {
+            localPlans = JSON.parse(localData);
+          }
+        } catch (e) {
+          console.error('Error loading local manual plans:', e);
+        }
+        
+        // Merge: Start with cloud plans, then add/override with local plans
+        const mergedPlans: { [key: string]: any[] } = { ...cloudPlans };
+        
+        Object.keys(localPlans).forEach(providerKey => {
+          if (!mergedPlans[providerKey]) {
+            // New provider from local - add entirely
+            mergedPlans[providerKey] = localPlans[providerKey].map(plan => ({
+              ...plan,
+              benefits: plan.benefits || defaultBenefits,
+              _isLocal: true
+            }));
+          } else {
+            // Provider exists in both - merge plans
+            const cloudPlanIds = new Set(mergedPlans[providerKey].map(p => p.id));
+            localPlans[providerKey].forEach(localPlan => {
+              if (cloudPlanIds.has(localPlan.id)) {
+                // Override cloud plan with local version
+                mergedPlans[providerKey] = mergedPlans[providerKey].map(p => 
+                  p.id === localPlan.id ? { ...localPlan, _isLocal: true } : p
+                );
+              } else {
+                // Add new local plan
+                mergedPlans[providerKey].push({ ...localPlan, _isLocal: true });
+              }
+            });
+          }
+        });
+        
+        console.log('📦 Merged manual plans - Cloud:', Object.keys(cloudPlans).length, 'providers, Local:', Object.keys(localPlans).length, 'providers');
+        setManualPlans(mergedPlans);
       } catch (error) {
         console.error('Error loading cloud manual plans:', error);
+        // Fallback to local only
+        try {
+          const localData = localStorage.getItem(STORAGE_KEYS.MANUAL_PLANS);
+          if (localData) {
+            setManualPlans(JSON.parse(localData));
+          }
+        } catch (e) {
+          console.error('Error loading local manual plans:', e);
+        }
       }
     };
     loadCloudManualPlans();
@@ -1258,7 +1236,14 @@ export default function InsurancePortal() {
       const history = localStorage.getItem(STORAGE_KEYS.REPORT_HISTORY);
       if (history) {
         const parsed = JSON.parse(history);
-        setReportHistory(parsed);
+        // Keep only last 10 entries to prevent quota issues
+        if (parsed.length > 10) {
+          const trimmed = parsed.slice(-10);
+          localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(trimmed));
+          setReportHistory(trimmed);
+        } else {
+          setReportHistory(parsed);
+        }
       }
     } catch (e) {
       console.error('Error loading history:', e);
@@ -1281,93 +1266,17 @@ export default function InsurancePortal() {
     }
   }, [localBenefitsEdits]);
 
-  // Save manual plans to localStorage whenever they change
+  // Save manual plans to localStorage whenever they change (only if not empty)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(manualPlans));
+    if (Object.keys(manualPlans).length > 0) {
+      localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(manualPlans));
+    }
   }, [manualPlans]);
 
   // Save custom providers to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.CUSTOM_PROVIDERS, JSON.stringify(customProviders));
   }, [customProviders]);
-
-  // DEBOUNCED CLOUD SYNC - Batch all pending edits and save after 2 seconds of no activity
-  useEffect(() => {
-    if (Object.keys(pendingCloudEdits).length === 0) return;
-    
-    setSyncStatus('pending');
-    
-    // Clear existing timeout
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-    
-    // Set new timeout - save after 2 seconds of no new edits
-    syncTimeoutRef.current = setTimeout(async () => {
-      setSyncStatus('saving');
-      console.log('📤 Batch saving', Object.keys(pendingCloudEdits).length, 'plan edits to cloud...');
-      
-      let successCount = 0;
-      let failCount = 0;
-      
-      // Save all pending edits one by one (but with small delay to avoid rate limits)
-      const editEntries = Object.entries(pendingCloudEdits);
-      
-      for (let i = 0; i < editEntries.length; i++) {
-        const [planId, editData] = editEntries[i];
-        try {
-          const response = await fetch('/api/benefits', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              planKey: `PLAN_EDIT_${planId}`, 
-              benefits: { ...editData, _isPlanEdit: true } 
-            })
-          });
-          
-          const result = await response.json();
-          if (result.success) {
-            successCount++;
-            // Update cloudPlanEdits with saved data
-            setCloudPlanEdits(prev => ({ ...prev, [planId]: editData }));
-          } else {
-            failCount++;
-          }
-        } catch (error) {
-          console.error('Error saving plan edit:', planId, error);
-          failCount++;
-        }
-        
-        // Small delay between API calls to avoid rate limiting
-        if (i < editEntries.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-      
-      // Clear pending edits that were saved
-      setPendingCloudEdits({});
-      
-      if (failCount === 0) {
-        setSyncStatus('saved');
-        console.log(`✅ All ${successCount} plan edits saved to cloud!`);
-        // Reset status after 3 seconds
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      } else {
-        setSyncStatus('error');
-        console.error(`⚠️ ${failCount} of ${editEntries.length} edits failed to save`);
-        alert(`⚠️ ${failCount} of ${editEntries.length} plan edits failed to save to cloud. They are saved locally.`);
-        // Reset status after 5 seconds
-        setTimeout(() => setSyncStatus('idle'), 5000);
-      }
-    }, 2000); // 2 second debounce
-    
-    // Cleanup on unmount
-    return () => {
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-      }
-    };
-  }, [pendingCloudEdits]);
 
   // Get plan benefits with local overrides
   const getPlanBenefits = (provider: string, planName: string, planId?: string): PlanBenefits => {
@@ -1541,21 +1450,17 @@ export default function InsurancePortal() {
       });
     }
     
-    // Save to cloud for persistence and sharing
+    // Save to localStorage only (private to this user)
     try {
-      await fetch('/api/manual-plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plans: updatedManualPlans })
-      });
+      localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(updatedManualPlans));
       setNewManualPlan({ planName: '', network: '', copay: '', premium: '' });
       setShowManualPlanModal(false);
-      alert('✅ Plan added and saved! It will be visible to anyone with this link.');
+      alert('✅ Plan added and saved to your system only. Other users will not see this plan.');
     } catch (error) {
-      console.error('Error saving to cloud:', error);
+      console.error('Error saving locally:', error);
       setNewManualPlan({ planName: '', network: '', copay: '', premium: '' });
       setShowManualPlanModal(false);
-      alert('✅ Plan added locally. Cloud sync may be unavailable.');
+      alert('⚠️ Plan added but could not save. Check browser storage.');
     }
   };
 
@@ -1583,15 +1488,11 @@ export default function InsurancePortal() {
       });
     }
     
-    // Save updated plans to cloud
+    // Save updated plans to localStorage only (private to this user)
     try {
-      await fetch('/api/manual-plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plans: updatedManualPlans })
-      });
+      localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(updatedManualPlans));
     } catch (error) {
-      console.error('Error saving to cloud:', error);
+      console.error('Error saving locally:', error);
     }
   };
 
@@ -1644,26 +1545,13 @@ export default function InsurancePortal() {
 
           const ageBand = findAgeBand(age, provider, planName);
           if (ageBand) {
-            // Check if this is a valid rate or NO_RATE marker
-            const hasValidRate = ageBand !== 'NO_RATE';
-            let premium = 0;
-            let needsManualRate = false;
-            
-            if (hasValidRate) {
-              const rateData = plans[planName][ageBand];
-              if (rateData && rateData[genderKey as 'M' | 'F']) {
-                premium = rateData[genderKey as 'M' | 'F'];
-              } else {
-                needsManualRate = true;
-              }
-            } else {
-              // No rate available for this age - show with 0 premium for manual entry
-              needsManualRate = true;
-            }
-            
-            let displayName = planName.replace(/_/g, ' ');
-            let network = 'Standard';
-            let copay = 'Variable';
+            const rateData = plans[planName][ageBand];
+            if (rateData && rateData[genderKey as 'M' | 'F']) {
+              const premium = rateData[genderKey as 'M' | 'F'];
+              
+              let displayName = planName.replace(/_/g, ' ');
+              let network = 'Standard';
+              let copay = 'Variable';
               
               // Copay detection
               if (planName.endsWith('_0')) copay = '0%';
@@ -1705,11 +1593,6 @@ export default function InsurancePortal() {
               // Get clean provider name (remove _MEDNET, _NEXTCARE, _NAS suffix)
               let cleanProviderName = provider.replace('_MEDNET', '').replace('_NEXTCARE', '').replace('_NAS', '').replace(/_/g, ' ');
               
-              // Fix WATANIA to show as WATANIA TAKAFUL
-              if (cleanProviderName === 'WATANIA' || cleanProviderName.startsWith('WATANIA ')) {
-                cleanProviderName = 'WATANIA TAKAFUL';
-              }
-              
               const planId = `${provider}_${planName}`;
               
               // Create base plan
@@ -1724,14 +1607,14 @@ export default function InsurancePortal() {
                 status: 'none',
                 benefits: getPlanBenefits(provider, planName, planId),
                 planLocation: isDubaiPlan ? 'Dubai' : 'Northern Emirates',
-                salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All',
-                needsManualRate: needsManualRate
+                salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All'
               };
               
               // Apply any local edits
               basePlan = applyLocalEdits(basePlan);
               
               memberPlans.push(basePlan);
+            }
           }
         });
       });
@@ -1758,27 +1641,15 @@ export default function InsurancePortal() {
         }
       });
 
-      // Sort plans: first by whether they have rates, then by premium
-      // Plans with N/A rates (needsManualRate && premium === 0) go to the end
-      memberPlans.sort((a, b) => {
-        const aIsNA = a.needsManualRate && a.premium === 0;
-        const bIsNA = b.needsManualRate && b.premium === 0;
-        // If one is N/A and the other isn't, N/A goes to the end
-        if (aIsNA && !bIsNA) return 1;
-        if (!aIsNA && bIsNA) return -1;
-        // Otherwise sort by premium
-        return a.premium - b.premium;
-      });
+      memberPlans.sort((a, b) => a.premium - b.premium);
 
-      // Calculate min/max/avg only from plans with actual premiums (excluding N/A plans)
-      const plansWithRates = memberPlans.filter(p => !(p.needsManualRate && p.premium === 0));
       newMemberResults[member.id] = {
         member,
         age,
         comparison: memberPlans,
-        minPrice: plansWithRates.length > 0 ? Math.min(...plansWithRates.map(r => r.premium)) : 0,
-        maxPrice: plansWithRates.length > 0 ? Math.max(...plansWithRates.map(r => r.premium)) : 0,
-        avgPrice: plansWithRates.length > 0 ? plansWithRates.reduce((sum, r) => sum + r.premium, 0) / plansWithRates.length : 0
+        minPrice: memberPlans.length > 0 ? Math.min(...memberPlans.map(r => r.premium)) : 0,
+        maxPrice: memberPlans.length > 0 ? Math.max(...memberPlans.map(r => r.premium)) : 0,
+        avgPrice: memberPlans.length > 0 ? memberPlans.reduce((sum, r) => sum + r.premium, 0) / memberPlans.length : 0
       };
     });
 
@@ -1874,7 +1745,7 @@ export default function InsurancePortal() {
   };
 
   // Save edited result plan (cloud for plan/network/copay, local for premium)
-  const saveEditedResultPlan = () => {
+  const saveEditedResultPlan = async () => {
     if (!editingResultPlan || !editingResultPlan.plan || !editingResultPlan.premium) {
       alert('Please enter plan name and premium');
       return;
@@ -1898,17 +1769,14 @@ export default function InsurancePortal() {
     // Local data for premium only (member-specific)
     const premiumValue = parseFloat(editingResultPlan.premium);
 
-    // Save premium to localStorage with member-specific key (immediate)
+    // Save premium to localStorage with member-specific key
     setLocalPlanEdits(prev => ({
       ...prev,
       [memberPlanKey]: { premium: premiumValue }
     }));
     
-    // Update cloudPlanEdits state immediately for UI
+    // Update cloudPlanEdits state immediately
     setCloudPlanEdits(prev => ({ ...prev, [planId]: cloudEditData }));
-    
-    // Queue for batched cloud save (will save after 2 seconds of no activity)
-    setPendingCloudEdits(prev => ({ ...prev, [planId]: cloudEditData }));
 
     // Update current session state for ALL members with this plan (for plan/network/copay)
     // But only update premium for the current member
@@ -1934,7 +1802,18 @@ export default function InsurancePortal() {
       return updated;
     });
 
-    // Close modal (no alert - sync status shown in UI)
+    // Save plan/network/copay to localStorage only (private to this user)
+    try {
+      const existingEdits = JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAN_EDITS) || '{}');
+      existingEdits[planId] = cloudEditData;
+      localStorage.setItem(STORAGE_KEYS.PLAN_EDITS, JSON.stringify(existingEdits));
+      console.log('💾 Plan edit saved locally:', planId, cloudEditData);
+      alert('✅ Plan details (name, network, copay) saved to your system only. Premium updated for this member only.');
+    } catch (error) {
+      console.error('Error saving plan edits locally:', error);
+      alert('⚠️ Could not save changes. Check browser storage.');
+    }
+
     setShowEditResultPlanModal(false);
     setEditingResultPlan(null);
     setEditingMemberId(null);
@@ -2000,7 +1879,7 @@ export default function InsurancePortal() {
     // Update cloudBenefits state immediately
     setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
     
-    // If it's a manual plan, update the manual plan object in state and cloud
+    // If it's a manual plan, update the manual plan object in state and localStorage
     if (isManualPlan && providerKey) {
       // Use functional update to get latest manualPlans state
       setManualPlans(prevManualPlans => {
@@ -2011,28 +1890,26 @@ export default function InsurancePortal() {
           ) || []
         };
         
-        // Save updated manual plans to cloud (async, don't await inside setState)
-        fetch('/api/manual-plans', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plans: updatedManualPlans })
-        }).catch(error => console.error('Error saving manual plan benefits to cloud:', error));
+        // Save to localStorage only (private to this user)
+        try {
+          localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(updatedManualPlans));
+        } catch (error) {
+          console.error('Error saving manual plan benefits locally:', error);
+        }
         
         return updatedManualPlans;
       });
     }
     
-    // Also save to benefits cloud endpoint (for all plans)
+    // Save to localStorage only (private to this browser/user)
     try {
-      await fetch('/api/benefits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: planId, benefits: updatedBenefits })
-      });
-      alert('✅ Benefits saved! Changes will sync to all users.');
+      const existingEdits = JSON.parse(localStorage.getItem(STORAGE_KEYS.BENEFITS_EDITS) || '{}');
+      existingEdits[planId] = updatedBenefits;
+      localStorage.setItem(STORAGE_KEYS.BENEFITS_EDITS, JSON.stringify(existingEdits));
+      alert('✅ Benefits saved to your system only. Other users will not see this change.');
     } catch (error) {
-      console.error('Error saving benefits to cloud:', error);
-      alert('✅ Benefits saved locally! Cloud sync may be unavailable.');
+      console.error('Error saving benefits locally:', error);
+      alert('⚠️ Could not save benefits. Check browser storage.');
     }
     
     setShowBenefits(prev => ({ ...prev, [key]: false }));
@@ -2093,16 +1970,24 @@ export default function InsurancePortal() {
         manualPlans // Save manual plans so they can be restored
       };
       
-      // Save all reports (no limit)
-      const history = [...reportHistory, reportState];
+      // Keep only last 10 reports to prevent quota issues
+      let history = [...reportHistory, reportState];
+      if (history.length > 10) {
+        history = history.slice(-10);
+      }
       
       localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
       setReportHistory(history);
     } catch (e) {
       console.error('Failed to save report history:', e);
-      // If quota exceeded, show message but keep existing history
+      // If quota exceeded, clear old history and try again
       if (e instanceof Error && e.name === 'QuotaExceededError') {
-        alert('Storage quota exceeded. Some old reports may need to be deleted to save new ones.');
+        try {
+          localStorage.removeItem(STORAGE_KEYS.REPORT_HISTORY);
+          setReportHistory([]);
+        } catch (clearError) {
+          console.error('Failed to clear history:', clearError);
+        }
       }
     }
   };
@@ -2222,11 +2107,6 @@ export default function InsurancePortal() {
                 else if (provider === 'TAKAFUL_EMARAT') network = 'NEXTCARE';
                 
                 let cleanProviderName = provider.replace('_MEDNET', '').replace('_NEXTCARE', '').replace('_NAS', '').replace(/_/g, ' ');
-                
-                // Fix WATANIA to show as WATANIA TAKAFUL
-                if (cleanProviderName === 'WATANIA' || cleanProviderName.startsWith('WATANIA ')) {
-                  cleanProviderName = 'WATANIA TAKAFUL';
-                }
                 
                 const planId = `${provider}_${planName}`;
                 
@@ -2571,7 +2451,7 @@ export default function InsurancePortal() {
 
     ${advisorComment ? `
     <div class="advisor-box">
-      <b>Advisor Comment:</b><br>${advisorComment.replace(/\n/g, '<br>')}
+      <b>Advisor Comment:</b> ${advisorComment}
     </div>
     ` : ''}
 
@@ -3008,80 +2888,6 @@ ${consolidatedTable}
                 </span>
               </div>
             )}
-            
-            {/* Refresh from Cloud button */}
-            <div className="mt-4 flex items-center gap-3">
-              <button 
-                onClick={refreshFromCloud}
-                disabled={isRefreshing}
-                className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
-                  isRefreshing 
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                    : 'bg-blue-500 hover:bg-blue-600 text-white'
-                }`}
-              >
-                <span className={isRefreshing ? 'animate-spin' : ''}>🔄</span>
-                {isRefreshing ? 'Refreshing...' : 'Refresh from Cloud'}
-              </button>
-              {lastRefreshTime && (
-                <span className="text-xs text-gray-500">
-                  Last refreshed: {lastRefreshTime.toLocaleTimeString()}
-                </span>
-              )}
-            </div>
-            
-            {/* Cloud sync status indicator */}
-            {syncStatus !== 'idle' && (
-              <div className={`mt-2 p-3 rounded-lg border flex items-center gap-2 ${
-                syncStatus === 'pending' ? 'bg-yellow-50 border-yellow-200' :
-                syncStatus === 'saving' ? 'bg-blue-50 border-blue-200' :
-                syncStatus === 'saved' ? 'bg-green-50 border-green-200' :
-                'bg-red-50 border-red-200'
-              }`}>
-                {syncStatus === 'pending' && (
-                  <>
-                    <span className="animate-pulse">⏳</span>
-                    <span className="text-sm text-yellow-700">
-                      {Object.keys(pendingCloudEdits).length} edits pending... (auto-saves in 2s)
-                    </span>
-                    <button 
-                      onClick={() => {
-                        // Clear timeout and trigger immediate save
-                        if (syncTimeoutRef.current) {
-                          clearTimeout(syncTimeoutRef.current);
-                          syncTimeoutRef.current = null;
-                        }
-                        // Trigger save by setting pending edits again (will fire useEffect)
-                        const current = { ...pendingCloudEdits };
-                        setPendingCloudEdits({});
-                        setTimeout(() => setPendingCloudEdits(current), 10);
-                      }}
-                      className="ml-auto px-2 py-1 text-xs bg-yellow-500 hover:bg-yellow-600 text-white rounded"
-                    >
-                      Sync Now
-                    </button>
-                  </>
-                )}
-                {syncStatus === 'saving' && (
-                  <>
-                    <span className="animate-spin">🔄</span>
-                    <span className="text-sm text-blue-700">Syncing to cloud...</span>
-                  </>
-                )}
-                {syncStatus === 'saved' && (
-                  <>
-                    <span>☁️</span>
-                    <span className="text-sm text-green-700">✓ All changes synced to cloud!</span>
-                  </>
-                )}
-                {syncStatus === 'error' && (
-                  <>
-                    <span>⚠️</span>
-                    <span className="text-sm text-red-700">Some edits failed to sync. Saved locally.</span>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -3302,21 +3108,16 @@ ${consolidatedTable}
               const filteredPlans = filterPlans(results.comparison);
               const selectedCount = results.comparison.filter(p => p.selected).length;
               const displayPlans = showSelected[member.id] ? filteredPlans.filter(p => p.selected) : filteredPlans;
-              const naPlansCount = results.comparison.filter(p => p.needsManualRate && p.premium === 0).length;
               
               return (
                 <div key={member.id} className="mb-6 border-2 border-gray-200 rounded-lg overflow-hidden">
                   <div className="flex justify-between items-center p-4 bg-gradient-to-r from-orange-100 to-blue-100 cursor-pointer" onClick={() => setExpandedMembers(prev => ({ ...prev, [member.id]: !prev[member.id] }))}>
                     <div>
-                      <h3 className="font-bold text-gray-800">
-                        {member.name || `Member ${memberIdx + 1}`} ({member.relationship})
-                        {results.age > 65 && <span className="ml-2 px-2 py-0.5 bg-amber-200 text-amber-800 text-xs rounded-full">65+</span>}
-                      </h3>
+                      <h3 className="font-bold text-gray-800">{member.name || `Member ${memberIdx + 1}`} ({member.relationship})</h3>
                       <p className="text-sm text-gray-600">Age: {results.age} | {member.gender} | {member.sponsorship}</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm font-medium text-blue-600">{filteredPlans.length} plans</span>
-                      {naPlansCount > 0 && <span className="text-sm font-medium text-amber-600">{naPlansCount} N/A</span>}
                       <span className="text-sm font-medium text-green-600">{selectedCount} selected</span>
                       <span className="text-2xl">{expandedMembers[member.id] ? '▼' : '▶'}</span>
                     </div>
@@ -3324,15 +3125,6 @@ ${consolidatedTable}
 
                   {expandedMembers[member.id] && (
                     <div className="p-4">
-                      {/* Age 65+ Warning Banner */}
-                      {results.age > 65 && naPlansCount > 0 && (
-                        <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
-                          <p className="text-amber-800 text-sm">
-                            <strong>⚠️ Age 65+ Notice:</strong> {naPlansCount} plans show "N/A" because they don't have standard rates for this age group.
-                            You can manually edit the premium by clicking the ✏️ button next to "N/A". Plans with rates: UFIC, ORIENT Basic, WATANIA NE.
-                          </p>
-                        </div>
-                      )}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                         <div className="p-3 bg-green-50 rounded-lg text-center">
                           <p className="text-xs text-gray-600">Lowest</p>
@@ -3414,7 +3206,6 @@ ${consolidatedTable}
                                     <td className="p-2 font-medium">
                                       {displayPlan.provider}
                                       {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
-                                      {plan.needsManualRate && !localPlanEdits[memberPlanKey]?.premium && <span className="ml-1 px-1 py-0.5 bg-amber-100 text-amber-700 text-xs rounded">65+ N/A</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">
@@ -3422,20 +3213,7 @@ ${consolidatedTable}
                                       {hasAnyEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.copay}</td>
-                                    <td className={`p-2 text-right font-semibold ${plan.needsManualRate && displayPlan.premium === 0 ? 'text-amber-600 bg-amber-50' : 'text-blue-700'}`}>
-                                      {plan.needsManualRate && displayPlan.premium === 0 ? (
-                                        <span className="flex items-center justify-end gap-1">
-                                          <span className="text-xs">N/A</span>
-                                          <button 
-                                            onClick={() => openEditResultPlanModal(member.id, plan.id)} 
-                                            className="px-1 py-0.5 text-xs bg-amber-200 hover:bg-amber-300 rounded"
-                                            title="Click to enter premium manually"
-                                          >✏️</button>
-                                        </span>
-                                      ) : (
-                                        `AED ${displayPlan.premium?.toLocaleString()}`
-                                      )}
-                                    </td>
+                                    <td className="p-2 text-right font-semibold text-blue-700">AED {displayPlan.premium?.toLocaleString()}</td>
                                     <td className="p-2 text-center">
                                       <select value={plan.status} onChange={(e) => updatePlanStatus(member.id, plan.id, e.target.value)} className="text-xs px-2 py-1 border rounded">
                                         <option value="none">-</option>
