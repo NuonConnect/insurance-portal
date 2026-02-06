@@ -87,6 +87,83 @@ const STORAGE_KEYS = {
 };
 
 // ============================================================================
+// PROVIDER LOGOS - Insurance Company Logos
+// ============================================================================
+const PROVIDER_LOGOS: { [key: string]: string } = {
+  // Imgur hosted logos
+  'SUKOON': 'https://i.imgur.com/hCWlUMe.jpeg',
+  'DNI': 'https://i.imgur.com/HKXpfsU.jpeg',
+  'DNIRC': 'https://i.imgur.com/HKXpfsU.jpeg',
+  'DUBAI NATIONAL': 'https://i.imgur.com/HKXpfsU.jpeg',
+  'QATAR': 'https://i.imgur.com/5d63cLP.png',
+  'QATAR INSURANCE': 'https://i.imgur.com/5d63cLP.png',
+  'QIC': 'https://i.imgur.com/5d63cLP.png',
+  'WATANIA': 'https://i.imgur.com/KaVFAu6.jpeg',
+  'ADAMJEE': 'https://i.imgur.com/dufDDqK.jpeg',
+  'FIDELITY': 'https://i.imgur.com/T26OgNE.jpeg',
+  'FIDELITY UNITED': 'https://i.imgur.com/T26OgNE.jpeg',
+  'LIVA': 'https://i.imgur.com/BqDrkcY.jpeg',
+  'EMIRATES': 'https://i.imgur.com/8cnZRff.jpeg',
+  'EMIRATES INSURANCE': 'https://i.imgur.com/8cnZRff.jpeg',
+  'EIC': 'https://i.imgur.com/8cnZRff.jpeg',
+  'RAK': 'https://i.imgur.com/HS6ctxT.png',
+  'RAK INSURANCE': 'https://i.imgur.com/HS6ctxT.png',
+  'RAKIC': 'https://i.imgur.com/HS6ctxT.png',
+  'SALAMA': 'https://i.imgur.com/Kx5sGSA.jpeg',
+  'INSURANCE HOUSE': 'https://i.imgur.com/OodWGYQ.jpeg',
+  'IH': 'https://i.imgur.com/OodWGYQ.jpeg',
+  'NEW INDIA': 'https://i.imgur.com/oUeb8HP.png',
+  'NIA': 'https://i.imgur.com/oUeb8HP.png',
+  'METHAQ': 'https://i.imgur.com/FjNhizV.jpeg',
+  'NGI': 'https://i.imgur.com/ye6IvRS.jpeg',
+  'NATIONAL GENERAL': 'https://i.imgur.com/ye6IvRS.jpeg',
+  'GIG': 'https://i.imgur.com/Kho3VbT.png',
+  'GULF INSURANCE': 'https://i.imgur.com/Kho3VbT.png',
+  'AL WATHBA': 'https://i.imgur.com/eulYgMf.jpeg',
+  'WATHBA': 'https://i.imgur.com/eulYgMf.jpeg',
+  'ORIENT': 'https://i.imgur.com/eIN9e72.png',
+  'ORIENT INSURANCE': 'https://i.imgur.com/eIN9e72.png',
+  'UNION INSURANCE': 'https://i.imgur.com/sdmPCNl.jpeg',
+  'AL SAGR': 'https://i.ibb.co/RkWHHjVP/al-sagr-insurance-logo-final-correction-as-of-10-05-2018.jpg',
+  'ALSAGR': 'https://i.ibb.co/RkWHHjVP/al-sagr-insurance-logo-final-correction-as-of-10-05-2018.jpg',
+  'AL ITTIHAD AL WATANI': 'https://i.imgur.com/UpraA62.jpeg',
+  'ITTIHAD': 'https://i.imgur.com/UpraA62.jpeg',
+  // ImgBB hosted logos (direct links)
+  'WATANIA TAKAFUL': 'https://i.ibb.co/PGzjTYWf/Watania.jpg',
+  'AL BUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
+  'ALBUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
+  'BUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
+  'ADNIC': 'https://i.ibb.co/PZhskxpb/ADNIC.jpg',
+  'ABU DHABI NATIONAL': 'https://i.ibb.co/PZhskxpb/ADNIC.jpg',
+  'ADNTC': 'https://i.ibb.co/Hpk1Qh07/ADNTC.jpg',
+  'ABU DHABI NATIONAL TAKAFUL': 'https://i.ibb.co/Hpk1Qh07/ADNTC.jpg',
+  'ORIENT TAKAFUL': 'https://i.ibb.co/chFfxJ0K/orient-takafu.jpg',
+  'TAKAFUL EMARAT': 'https://i.ibb.co/2LjDzfG/Takaful-Emarat.png',
+  'DUBAI INSURANCE': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
+  'DIC': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
+};
+
+// Helper function to get logo URL for a provider
+const getProviderLogo = (provider: string): string | null => {
+  if (!provider) return null;
+  const upperProvider = provider.toUpperCase().trim();
+  
+  // Direct match
+  if (PROVIDER_LOGOS[upperProvider]) {
+    return PROVIDER_LOGOS[upperProvider];
+  }
+  
+  // Partial match - check if provider name contains any key
+  for (const key of Object.keys(PROVIDER_LOGOS)) {
+    if (upperProvider.includes(key) || key.includes(upperProvider)) {
+      return PROVIDER_LOGOS[key];
+    }
+  }
+  
+  return null;
+};
+
+// ============================================================================
 // DEFAULT BENEFITS
 // ============================================================================
 const defaultBenefits: PlanBenefits = {
@@ -405,8 +482,8 @@ const PLAN_BENEFITS: { [key: string]: PlanBenefits } = {
     diagnostics: '10% copay',
     consultation: '20% copay max AED 50'
   },
-  // === FIDELITY NE PLAN ===
-  'FIDELITY_NE_BASIC': {
+  // === FIDELITY UNITED NE PLAN ===
+  'FIDELITY_UNITED_NE_BASIC': {
     inpatient: 'AAFIA TPA network. Covered as per policy',
     outpatient: 'AAFIA network clinics',
     emergency: 'AAFIA network',
@@ -432,7 +509,7 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
     'SUPERIOR_MEDNET_0': { '0-5': {M: 3591, F: 3591}, '6-17': {M: 2394, F: 2394}, '18-30': {M: 2693, F: 4490}, '31-40': {M: 3591, F: 5687}, '41-50': {M: 4788, F: 6436}, '51-60': {M: 6884, F: 8530}, '61-65': {M: 9879, F: 11826} },
     'PREMIUM_MEDNET_0': { '0-5': {M: 4788, F: 4788}, '6-17': {M: 3192, F: 3192}, '18-30': {M: 3591, F: 5987}, '31-40': {M: 4788, F: 7583}, '41-50': {M: 6386, F: 8580}, '51-60': {M: 9179, F: 11374}, '61-65': {M: 13172, F: 15768} }
   },
-  'FIDELITY': {
+  'FIDELITY UNITED': {
     'CLASSIC_NAS_0': { '0-5': {M: 2500, F: 2500}, '6-17': {M: 1800, F: 1800}, '18-30': {M: 2000, F: 3200}, '31-40': {M: 2600, F: 4100}, '41-50': {M: 3400, F: 4600}, '51-60': {M: 4900, F: 6100}, '61-65': {M: 7000, F: 8500} },
     'CLASSIC_NAS_10': { '0-5': {M: 2250, F: 2250}, '6-17': {M: 1620, F: 1620}, '18-30': {M: 1800, F: 2880}, '31-40': {M: 2340, F: 3690}, '41-50': {M: 3060, F: 4140}, '51-60': {M: 4410, F: 5490}, '61-65': {M: 6300, F: 7650} },
     'CLASSIC_NAS_20': { '0-5': {M: 2000, F: 2000}, '6-17': {M: 1440, F: 1440}, '18-30': {M: 1600, F: 2560}, '31-40': {M: 2080, F: 3280}, '41-50': {M: 2720, F: 3680}, '51-60': {M: 3920, F: 4880}, '61-65': {M: 5600, F: 6800} },
@@ -708,8 +785,8 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
     'NEXTCARE_GN_PLUS_10': { '0-5': {M: 3195, F: 3195}, '6-17': {M: 2133, F: 2133}, '18-30': {M: 2403, F: 3987}, '31-40': {M: 3195, F: 5067}, '41-50': {M: 4257, F: 5787}, '51-60': {M: 6120, F: 7632}, '61-65': {M: 8802, F: 10593} },
     'NEXTCARE_GN_PLUS_20': { '0-5': {M: 2840, F: 2840}, '6-17': {M: 1896, F: 1896}, '18-30': {M: 2136, F: 3544}, '31-40': {M: 2840, F: 4504}, '41-50': {M: 3784, F: 5144}, '51-60': {M: 5440, F: 6784}, '61-65': {M: 7824, F: 9416} }
   },
-  // FIDELITY NEXTCARE Plans
-  'FIDELITY_NEXTCARE': {
+  // FIDELITY UNITED NEXTCARE Plans
+  'FIDELITY_UNITED_NEXTCARE': {
     'NEXTCARE_PCP_0': { '0-5': {M: 1900, F: 1900}, '6-17': {M: 1270, F: 1270}, '18-30': {M: 1430, F: 2370}, '31-40': {M: 1900, F: 3010}, '41-50': {M: 2530, F: 3440}, '51-60': {M: 3640, F: 4540}, '61-65': {M: 5240, F: 6300} },
     'NEXTCARE_PCP_10': { '0-5': {M: 1710, F: 1710}, '6-17': {M: 1143, F: 1143}, '18-30': {M: 1287, F: 2133}, '31-40': {M: 1710, F: 2709}, '41-50': {M: 2277, F: 3096}, '51-60': {M: 3276, F: 4086}, '61-65': {M: 4716, F: 5670} },
     'NEXTCARE_PCP_20': { '0-5': {M: 1520, F: 1520}, '6-17': {M: 1016, F: 1016}, '18-30': {M: 1144, F: 1896}, '31-40': {M: 1520, F: 2408}, '41-50': {M: 2024, F: 2752}, '51-60': {M: 2912, F: 3632}, '61-65': {M: 4192, F: 5040} },
@@ -822,8 +899,8 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
     'NAS_CN_10': { '0-5': {M: 2925, F: 2925}, '6-17': {M: 1953, F: 1953}, '18-30': {M: 2196, F: 3645}, '31-40': {M: 2925, F: 4635}, '41-50': {M: 3897, F: 5292}, '51-60': {M: 5598, F: 6984}, '61-65': {M: 8055, F: 9684} },
     'NAS_CN_20': { '0-5': {M: 2600, F: 2600}, '6-17': {M: 1736, F: 1736}, '18-30': {M: 1952, F: 3240}, '31-40': {M: 2600, F: 4120}, '41-50': {M: 3464, F: 4704}, '51-60': {M: 4976, F: 6208}, '61-65': {M: 7160, F: 8608} }
   },
-  // FIDELITY NAS Plans
-  'FIDELITY_NAS': {
+  // FIDELITY UNITED NAS Plans
+  'FIDELITY_UNITED_NAS': {
     'NAS_VN_0': { '0-5': {M: 1850, F: 1850}, '6-17': {M: 1240, F: 1240}, '18-30': {M: 1390, F: 2310}, '31-40': {M: 1850, F: 2930}, '41-50': {M: 2470, F: 3350}, '51-60': {M: 3550, F: 4420}, '61-65': {M: 5100, F: 6140} },
     'NAS_VN_10': { '0-5': {M: 1665, F: 1665}, '6-17': {M: 1116, F: 1116}, '18-30': {M: 1251, F: 2079}, '31-40': {M: 1665, F: 2637}, '41-50': {M: 2223, F: 3015}, '51-60': {M: 3195, F: 3978}, '61-65': {M: 4590, F: 5526} },
     'NAS_VN_20': { '0-5': {M: 1480, F: 1480}, '6-17': {M: 992, F: 992}, '18-30': {M: 1112, F: 1848}, '31-40': {M: 1480, F: 2344}, '41-50': {M: 1976, F: 2680}, '51-60': {M: 2840, F: 3536}, '61-65': {M: 4080, F: 4912} },
@@ -948,7 +1025,7 @@ const MANUAL_PROVIDERS = [
   { id: 'DIC', name: 'DIC', networks: ['ISON', 'MEDNET', 'DUBAICARE'] },
   { id: 'ORIENT_MANUAL', name: 'ORIENT', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] },
   { id: 'ADAMJEE', name: 'ADAMJEE', networks: ['MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
-  { id: 'FIDELITY_MANUAL', name: 'FIDELITY', networks: ['NEXTCARE PCP RN3', 'NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
+  { id: 'FIDELITY_MANUAL', name: 'FIDELITY UNITED', networks: ['NEXTCARE PCP RN3', 'NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
   { id: 'DUBAI_INSURANCE', name: 'DUBAI INSURANCE', networks: ['DUBAICARE N5', 'DUBAICARE N3', 'DUBAICARE N2', 'DUBAICARE EXCL N2', 'DUBAICARE N1', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] },
   { id: 'RAK', name: 'RAK', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
   { id: 'WATANIA_TAKAFUL_MANUAL', name: 'WATANIA TAKAFUL', networks: ['MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
@@ -1591,7 +1668,7 @@ export default function InsurancePortal() {
               else if (planName.includes('MEDNET')) network = 'MEDNET';
               else if (planName.includes('NAS')) network = 'NAS';
               else if (planName.includes('NEXTCARE')) network = 'NEXTCARE';
-              else if (provider === 'FIDELITY' && planName.includes('NE')) network = 'AAFIA TPA';
+              else if (provider === 'FIDELITY UNITED' && planName.includes('NE')) network = 'AAFIA TPA';
               else if (provider === 'UFIC') network = 'UFIC Network';
               else if (provider.includes('WATANIA') && !provider.includes('MEDNET') && !provider.includes('NAS')) network = 'NAS/Mednet TPA';
               else if (provider.includes('ORIENT') && !provider.includes('MEDNET') && !provider.includes('NEXTCARE')) network = 'Orient/Nextcare';
@@ -2071,7 +2148,7 @@ export default function InsurancePortal() {
                 else if (planName.includes('MEDNET')) network = 'MEDNET';
                 else if (planName.includes('NAS')) network = 'NAS';
                 else if (planName.includes('NEXTCARE')) network = 'NEXTCARE';
-                else if (provider === 'FIDELITY' && planName.includes('NE')) network = 'AAFIA TPA';
+                else if (provider === 'FIDELITY UNITED' && planName.includes('NE')) network = 'AAFIA TPA';
                 else if (provider === 'UFIC') network = 'UFIC Network';
                 else if (provider.includes('WATANIA') && !provider.includes('MEDNET') && !provider.includes('NAS')) network = 'NAS/Mednet TPA';
                 else if (provider.includes('ORIENT') && !provider.includes('MEDNET') && !provider.includes('NEXTCARE')) network = 'Orient/Nextcare';
@@ -2357,14 +2434,19 @@ export default function InsurancePortal() {
       <thead>
         <tr>
           <th class="col-benefit">BENEFITS</th>
-          ${selectedPlans.map(plan => `
+          ${selectedPlans.map(plan => {
+            const logoUrl = getProviderLogo(plan.provider);
+            return `
             <th class="col-plan">
-              ${plan.provider}
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                ${logoUrl ? `<img src="${logoUrl}" alt="${plan.provider}" style="width:60px;height:40px;object-fit:contain;" onerror="this.style.display='none'">` : ''}
+                <span>${plan.provider}</span>
+              </div>
               ${plan.status === 'renewal' ? '<div class="tag tag-renewal">RENEWAL</div>' : ''}
               ${plan.status === 'alternative' ? '<div class="tag tag-alternative">ALTERNATIVE</div>' : ''}
               ${plan.status === 'recommended' ? '<div class="tag tag-recommended">RECOMMENDED</div>' : ''}
             </th>
-          `).join('')}
+          `}).join('')}
         </tr>
       </thead>
       <tbody>
@@ -2552,13 +2634,14 @@ export default function InsurancePortal() {
       overflow-wrap: break-word;
     }
     .main-table th {
-      background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
-      color: white;
+      background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+      color: #1e40af;
       font-weight: bold;
       font-size: 9px;
       padding: 6px 5px;
+      border-bottom: 2px solid #3b82f6;
     }
-    .col-benefit { text-align: left !important; background: #1e40af !important; }
+    .col-benefit { text-align: left !important; background: #dbeafe !important; color: #1e40af !important; }
     .col-plan { min-width: 100px; }
     
     .cell-label {
@@ -3176,8 +3259,18 @@ ${consolidatedTable}
                                       ) : actualRank}
                                     </td>
                                     <td className="p-2 font-medium">
-                                      {displayPlan.provider}
-                                      {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
+                                      <div className="flex items-center gap-2">
+                                        {getProviderLogo(displayPlan.provider) && (
+                                          <img 
+                                            src={getProviderLogo(displayPlan.provider) || ''} 
+                                            alt={displayPlan.provider} 
+                                            className="w-8 h-5 object-contain"
+                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                          />
+                                        )}
+                                        <span>{displayPlan.provider}</span>
+                                        {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
+                                      </div>
                                     </td>
                                     <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">
