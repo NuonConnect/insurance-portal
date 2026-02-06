@@ -1086,7 +1086,9 @@ export default function InsurancePortal() {
     try {
       const savedPlanEdits = localStorage.getItem(STORAGE_KEYS.PLAN_EDITS);
       if (savedPlanEdits) {
-        setLocalPlanEdits(JSON.parse(savedPlanEdits));
+        const parsed = JSON.parse(savedPlanEdits);
+        console.log('📥 Loaded plan edits from localStorage:', parsed);
+        setLocalPlanEdits(parsed);
       }
     } catch (e) {
       console.error('Error loading plan edits:', e);
@@ -1096,7 +1098,9 @@ export default function InsurancePortal() {
     try {
       const savedBenefitsEdits = localStorage.getItem(STORAGE_KEYS.BENEFITS_EDITS);
       if (savedBenefitsEdits) {
-        setLocalBenefitsEdits(JSON.parse(savedBenefitsEdits));
+        const parsed = JSON.parse(savedBenefitsEdits);
+        console.log('📥 Loaded benefits edits from localStorage:', parsed);
+        setLocalBenefitsEdits(parsed);
       }
     } catch (e) {
       console.error('Error loading benefits edits:', e);
@@ -1106,7 +1110,9 @@ export default function InsurancePortal() {
     try {
       const savedManualPlans = localStorage.getItem(STORAGE_KEYS.MANUAL_PLANS);
       if (savedManualPlans) {
-        setManualPlans(JSON.parse(savedManualPlans));
+        const parsed = JSON.parse(savedManualPlans);
+        console.log('📥 Loaded manual plans from localStorage:', parsed);
+        setManualPlans(parsed);
       }
     } catch (e) {
       console.error('Error loading manual plans:', e);
@@ -1255,6 +1261,7 @@ export default function InsurancePortal() {
   // Save plan edits to localStorage whenever they change
   useEffect(() => {
     if (Object.keys(localPlanEdits).length > 0) {
+      console.log('💾 Saving plan edits to localStorage:', localPlanEdits);
       localStorage.setItem(STORAGE_KEYS.PLAN_EDITS, JSON.stringify(localPlanEdits));
     }
   }, [localPlanEdits]);
@@ -1262,6 +1269,7 @@ export default function InsurancePortal() {
   // Save benefits edits to localStorage whenever they change
   useEffect(() => {
     if (Object.keys(localBenefitsEdits).length > 0) {
+      console.log('💾 Saving benefits edits to localStorage:', localBenefitsEdits);
       localStorage.setItem(STORAGE_KEYS.BENEFITS_EDITS, JSON.stringify(localBenefitsEdits));
     }
   }, [localBenefitsEdits]);
@@ -1320,28 +1328,27 @@ export default function InsurancePortal() {
     return { ...defaultBenefits };
   };
 
-  // Apply local plan edits to a plan (cloud edits for plan/network/copay, local for premium)
+  // Apply local plan edits to a plan (LOCAL edits for plan/network/copay - NO premium saving)
   const applyLocalEdits = (plan: InsurancePlan, memberId?: number): InsurancePlan => {
-    // Cloud edits for plan name, network, copay (shared across all users)
-    const cloudEdits = cloudPlanEdits[plan.id];
+    // LOCAL edits for plan name, network, copay (saved to localStorage with planId key)
+    const localPlanLevelEdits = localPlanEdits[plan.id];
     
-    // Member-specific key for premium only
-    const memberPlanKey = memberId !== undefined ? `${memberId}_${plan.id}` : plan.id;
-    const localEdits = localPlanEdits[memberPlanKey];
+    // CLOUD edits for plan name, network, copay (existing shared data - read only)
+    const cloudEdits = cloudPlanEdits[plan.id];
     
     // Check local edits first, then cloud benefits for benefits
     const benefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
     
-    if (!cloudEdits && !localEdits && !benefitsEdits) return plan;
+    if (!localPlanLevelEdits && !cloudEdits && !benefitsEdits) return plan;
     
     return {
       ...plan,
-      // Plan name, network, copay come from cloud edits (shared)
-      plan: cloudEdits?.plan || plan.plan,
-      network: cloudEdits?.network || plan.network,
-      copay: cloudEdits?.copay || plan.copay,
-      // Premium comes from local member-specific edits
-      premium: localEdits?.premium !== undefined ? localEdits.premium : plan.premium,
+      // LOCAL edits take priority over cloud edits
+      plan: localPlanLevelEdits?.plan || cloudEdits?.plan || plan.plan,
+      network: localPlanLevelEdits?.network || cloudEdits?.network || plan.network,
+      copay: localPlanLevelEdits?.copay || cloudEdits?.copay || plan.copay,
+      // Premium is NEVER saved - always comes from original plan data or user input during session
+      premium: plan.premium,
       benefits: benefitsEdits || plan.benefits
     };
   };
@@ -1744,7 +1751,7 @@ export default function InsurancePortal() {
     setShowEditResultPlanModal(true);
   };
 
-  // Save edited result plan (cloud for plan/network/copay, local for premium)
+  // Save edited result plan (plan/network/copay saved permanently, premium is session-only)
   const saveEditedResultPlan = async () => {
     if (!editingResultPlan || !editingResultPlan.plan || !editingResultPlan.premium) {
       alert('Please enter plan name and premium');
@@ -1757,29 +1764,25 @@ export default function InsurancePortal() {
     }
     
     const planId = editingResultPlan.id;
-    const memberPlanKey = `${editingMemberId}_${planId}`;
     
-    // Cloud data for plan name, network, copay (shared across all users)
-    const cloudEditData = {
+    // Plan/network/copay data - saved PERMANENTLY to localStorage
+    const planEditData = {
       plan: editingResultPlan.plan,
       network: editingResultPlan.network || 'Standard',
       copay: editingResultPlan.copay || 'Variable'
     };
     
-    // Local data for premium only (member-specific)
+    // Premium - NOT saved permanently (session only, member-specific)
     const premiumValue = parseFloat(editingResultPlan.premium);
 
-    // Save premium to localStorage with member-specific key
+    // Save plan/network/copay to localStorage (persists across refresh)
     setLocalPlanEdits(prev => ({
       ...prev,
-      [memberPlanKey]: { premium: premiumValue }
+      [planId]: planEditData  // Key is just planId, not member-specific
     }));
-    
-    // Update cloudPlanEdits state immediately
-    setCloudPlanEdits(prev => ({ ...prev, [planId]: cloudEditData }));
 
     // Update current session state for ALL members with this plan (for plan/network/copay)
-    // But only update premium for the current member
+    // Premium only changes for the CURRENT member being edited (session only)
     setMemberResults(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(mKey => {
@@ -1789,11 +1792,11 @@ export default function InsurancePortal() {
           comparison: updated[mId].comparison.map((item: any) =>
             item.id === planId ? {
               ...item,
-              // Plan name, network, copay apply to all members
-              plan: cloudEditData.plan,
-              network: cloudEditData.network,
-              copay: cloudEditData.copay,
-              // Premium only changes for the current member being edited
+              // Plan name, network, copay apply to all members (saved permanently)
+              plan: planEditData.plan,
+              network: planEditData.network,
+              copay: planEditData.copay,
+              // Premium only changes for the current member (NOT saved - session only)
               premium: mId === editingMemberId ? premiumValue : item.premium
             } : item
           )
@@ -1802,17 +1805,8 @@ export default function InsurancePortal() {
       return updated;
     });
 
-    // Save plan/network/copay to localStorage only (private to this user)
-    try {
-      const existingEdits = JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAN_EDITS) || '{}');
-      existingEdits[planId] = cloudEditData;
-      localStorage.setItem(STORAGE_KEYS.PLAN_EDITS, JSON.stringify(existingEdits));
-      console.log('💾 Plan edit saved locally:', planId, cloudEditData);
-      alert('✅ Plan details (name, network, copay) saved to your system only. Premium updated for this member only.');
-    } catch (error) {
-      console.error('Error saving plan edits locally:', error);
-      alert('⚠️ Could not save changes. Check browser storage.');
-    }
+    console.log('💾 Plan edit saved to localStorage:', planId, planEditData);
+    console.log('💡 Premium NOT saved (session only for member', editingMemberId, '):', premiumValue);
 
     setShowEditResultPlanModal(false);
     setEditingResultPlan(null);
@@ -1844,7 +1838,7 @@ export default function InsurancePortal() {
     }
   };
 
-  // Update benefits - NOW SAVES TO LOCALSTORAGE AND CLOUD FOR PERSISTENCE
+  // Update benefits - SAVES TO LOCALSTORAGE ONLY (persists on this system)
   const updateBenefits = async (memberId: number, planId: string) => {
     const key = `${memberId}_${planId}`;
     const updatedBenefits = editingBenefits[key];
@@ -1855,7 +1849,7 @@ export default function InsurancePortal() {
     const isManualPlan = plan?.isManual;
     const providerKey = plan?.providerKey;
     
-    // Save to localStorage for persistence
+    // Save to localStorage for persistence (via useEffect trigger)
     setLocalBenefitsEdits(prev => ({
       ...prev,
       [planId]: updatedBenefits
@@ -1876,41 +1870,18 @@ export default function InsurancePortal() {
       return updated;
     });
     
-    // Update cloudBenefits state immediately
-    setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
-    
-    // If it's a manual plan, update the manual plan object in state and localStorage
+    // If it's a manual plan, also update the manual plan object in state
     if (isManualPlan && providerKey) {
-      // Use functional update to get latest manualPlans state
-      setManualPlans(prevManualPlans => {
-        const updatedManualPlans = {
-          ...prevManualPlans,
-          [providerKey]: prevManualPlans[providerKey]?.map(p => 
-            p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
-          ) || []
-        };
-        
-        // Save to localStorage only (private to this user)
-        try {
-          localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(updatedManualPlans));
-        } catch (error) {
-          console.error('Error saving manual plan benefits locally:', error);
-        }
-        
-        return updatedManualPlans;
-      });
+      setManualPlans(prevManualPlans => ({
+        ...prevManualPlans,
+        [providerKey]: prevManualPlans[providerKey]?.map(p => 
+          p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
+        ) || []
+      }));
     }
     
-    // Save to localStorage only (private to this browser/user)
-    try {
-      const existingEdits = JSON.parse(localStorage.getItem(STORAGE_KEYS.BENEFITS_EDITS) || '{}');
-      existingEdits[planId] = updatedBenefits;
-      localStorage.setItem(STORAGE_KEYS.BENEFITS_EDITS, JSON.stringify(existingEdits));
-      alert('✅ Benefits saved to your system only. Other users will not see this change.');
-    } catch (error) {
-      console.error('Error saving benefits locally:', error);
-      alert('⚠️ Could not save benefits. Check browser storage.');
-    }
+    console.log('💾 Benefits saved:', planId);
+    alert('✅ Benefits saved! (This system only)');
     
     setShowBenefits(prev => ({ ...prev, [key]: false }));
   };
@@ -3176,22 +3147,23 @@ ${consolidatedTable}
                             {displayPlans.map((plan, planIdx) => {
                               const actualRank = results.comparison.findIndex(p => p.id === plan.id) + 1;
                               const benefitsKey = `${member.id}_${plan.id}`;
-                              const memberPlanKey = `${member.id}_${plan.id}`;
-                              // Check for cloud edits (plan/network/copay) and local edits (premium)
+                              // Check for LOCAL edits first (plan/network/copay saved to localStorage)
+                              const hasLocalPlanEdits = localPlanEdits[plan.id];
+                              // Then check CLOUD edits (existing shared data)
                               const hasCloudEdits = cloudPlanEdits[plan.id];
-                              const hasLocalPremiumEdit = localPlanEdits[memberPlanKey]?.premium !== undefined;
                               const hasBenefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
-                              const hasAnyEdits = hasCloudEdits || hasLocalPremiumEdit || hasBenefitsEdits;
+                              const hasAnyEdits = hasLocalPlanEdits || hasCloudEdits || hasBenefitsEdits;
                               
-                              // Apply cloud edits for plan/network/copay, local edits for premium
+                              // Apply LOCAL edits first, then cloud edits for plan/network/copay
+                              // Premium is NOT saved - always from original plan data
                               const displayPlan = {
                                 ...plan,
-                                // Cloud edits for plan name, network, copay (shared across all users)
-                                plan: cloudPlanEdits[plan.id]?.plan || plan.plan,
-                                network: cloudPlanEdits[plan.id]?.network || plan.network,
-                                copay: cloudPlanEdits[plan.id]?.copay || plan.copay,
-                                // Local edits for premium (member-specific)
-                                premium: localPlanEdits[memberPlanKey]?.premium !== undefined ? localPlanEdits[memberPlanKey].premium : plan.premium
+                                // LOCAL edits take priority over cloud edits
+                                plan: localPlanEdits[plan.id]?.plan || cloudPlanEdits[plan.id]?.plan || plan.plan,
+                                network: localPlanEdits[plan.id]?.network || cloudPlanEdits[plan.id]?.network || plan.network,
+                                copay: localPlanEdits[plan.id]?.copay || cloudPlanEdits[plan.id]?.copay || plan.copay,
+                                // Premium is session-only (from plan data or current session edits)
+                                premium: plan.premium
                               };
                               
                               return (
