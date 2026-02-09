@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
 // ============================================================================
-// STORAGE ARCHITECTURE - LOCAL-FIRST WITH CLOUD BASELINE
+// CLOUD STORAGE - Uses Netlify Functions (automatic with GitHub deploy)
 // ============================================================================
-// Cloud Storage (Netlify Blobs): READ-ONLY baseline data shared by all users
-// - Existing edits made before this change are visible to everyone
-// - No new data is synced to cloud
-//
-// Local Storage (Browser): PRIVATE to each user
-// - All new edits (benefits, manual plans, plan details) saved here only
-// - Each user's changes are private to their browser
-// - Local edits take priority over cloud data when displaying
+// No configuration needed! Data is stored in Netlify Blobs automatically.
+// Works across all devices and users.
 
 // ============================================================================
 // TYPES
@@ -56,7 +50,7 @@ interface InsurancePlan {
   plan: string;
   network: string;
   copay: string;
-  premium: number;
+  premium: number | null;  // Allow null for 65+ plans without rates (displays as "N/A")
   selected: boolean;
   status: 'none' | 'renewal' | 'alternative' | 'recommended';
   benefits: PlanBenefits;
@@ -64,6 +58,7 @@ interface InsurancePlan {
   providerKey?: string;
   planLocation?: string;
   salaryCategory?: string;
+  hasNoPremium?: boolean;  // Flag for 65+ plans that have no standard rates
 }
 
 interface MemberResult {
@@ -73,6 +68,7 @@ interface MemberResult {
   minPrice: number;
   maxPrice: number;
   avgPrice: number;
+  naPremiumCount?: number;  // Count of plans with N/A premium (for 65+ display)
 }
 
 // ============================================================================
@@ -84,83 +80,6 @@ const STORAGE_KEYS = {
   REPORT_HISTORY: 'nsib_report_history',
   MANUAL_PLANS: 'nsib_manual_plans',
   CUSTOM_PROVIDERS: 'nsib_custom_providers'
-};
-
-// ============================================================================
-// PROVIDER LOGOS - Insurance Company Logos
-// ============================================================================
-const PROVIDER_LOGOS: { [key: string]: string } = {
-  // Imgur hosted logos
-  'SUKOON': 'https://i.imgur.com/hCWlUMe.jpeg',
-  'DNI': 'https://i.imgur.com/HKXpfsU.jpeg',
-  'DNIRC': 'https://i.imgur.com/HKXpfsU.jpeg',
-  'DUBAI NATIONAL': 'https://i.imgur.com/HKXpfsU.jpeg',
-  'QATAR': 'https://i.imgur.com/5d63cLP.png',
-  'QATAR INSURANCE': 'https://i.imgur.com/5d63cLP.png',
-  'QIC': 'https://i.imgur.com/5d63cLP.png',
-  'WATANIA': 'https://i.imgur.com/KaVFAu6.jpeg',
-  'ADAMJEE': 'https://i.imgur.com/dufDDqK.jpeg',
-  'FIDELITY': 'https://i.imgur.com/T26OgNE.jpeg',
-  'FIDELITY UNITED': 'https://i.imgur.com/T26OgNE.jpeg',
-  'LIVA': 'https://i.imgur.com/BqDrkcY.jpeg',
-  'EMIRATES': 'https://i.imgur.com/8cnZRff.jpeg',
-  'EMIRATES INSURANCE': 'https://i.imgur.com/8cnZRff.jpeg',
-  'EIC': 'https://i.imgur.com/8cnZRff.jpeg',
-  'RAK': 'https://i.imgur.com/HS6ctxT.png',
-  'RAK INSURANCE': 'https://i.imgur.com/HS6ctxT.png',
-  'RAKIC': 'https://i.imgur.com/HS6ctxT.png',
-  'SALAMA': 'https://i.imgur.com/Kx5sGSA.jpeg',
-  'INSURANCE HOUSE': 'https://i.imgur.com/OodWGYQ.jpeg',
-  'IH': 'https://i.imgur.com/OodWGYQ.jpeg',
-  'NEW INDIA': 'https://i.imgur.com/oUeb8HP.png',
-  'NIA': 'https://i.imgur.com/oUeb8HP.png',
-  'METHAQ': 'https://i.imgur.com/FjNhizV.jpeg',
-  'NGI': 'https://i.imgur.com/ye6IvRS.jpeg',
-  'NATIONAL GENERAL': 'https://i.imgur.com/ye6IvRS.jpeg',
-  'GIG': 'https://i.imgur.com/Kho3VbT.png',
-  'GULF INSURANCE': 'https://i.imgur.com/Kho3VbT.png',
-  'AL WATHBA': 'https://i.imgur.com/eulYgMf.jpeg',
-  'WATHBA': 'https://i.imgur.com/eulYgMf.jpeg',
-  'ORIENT': 'https://i.imgur.com/eIN9e72.png',
-  'ORIENT INSURANCE': 'https://i.imgur.com/eIN9e72.png',
-  'UNION INSURANCE': 'https://i.imgur.com/sdmPCNl.jpeg',
-  'AL SAGR': 'https://i.ibb.co/RkWHHjVP/al-sagr-insurance-logo-final-correction-as-of-10-05-2018.jpg',
-  'ALSAGR': 'https://i.ibb.co/RkWHHjVP/al-sagr-insurance-logo-final-correction-as-of-10-05-2018.jpg',
-  'AL ITTIHAD AL WATANI': 'https://i.imgur.com/UpraA62.jpeg',
-  'ITTIHAD': 'https://i.imgur.com/UpraA62.jpeg',
-  // ImgBB hosted logos (direct links)
-  'WATANIA TAKAFUL': 'https://i.ibb.co/PGzjTYWf/Watania.jpg',
-  'AL BUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
-  'ALBUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
-  'BUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
-  'ADNIC': 'https://i.ibb.co/PZhskxpb/ADNIC.jpg',
-  'ABU DHABI NATIONAL': 'https://i.ibb.co/PZhskxpb/ADNIC.jpg',
-  'ADNTC': 'https://i.ibb.co/Hpk1Qh07/ADNTC.jpg',
-  'ABU DHABI NATIONAL TAKAFUL': 'https://i.ibb.co/Hpk1Qh07/ADNTC.jpg',
-  'ORIENT TAKAFUL': 'https://i.ibb.co/chFfxJ0K/orient-takafu.jpg',
-  'TAKAFUL EMARAT': 'https://i.ibb.co/2LjDzfG/Takaful-Emarat.png',
-  'DUBAI INSURANCE': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
-  'DIC': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
-};
-
-// Helper function to get logo URL for a provider
-const getProviderLogo = (provider: string): string | null => {
-  if (!provider) return null;
-  const upperProvider = provider.toUpperCase().trim();
-  
-  // Direct match
-  if (PROVIDER_LOGOS[upperProvider]) {
-    return PROVIDER_LOGOS[upperProvider];
-  }
-  
-  // Partial match - check if provider name contains any key
-  for (const key of Object.keys(PROVIDER_LOGOS)) {
-    if (upperProvider.includes(key) || key.includes(upperProvider)) {
-      return PROVIDER_LOGOS[key];
-    }
-  }
-  
-  return null;
 };
 
 // ============================================================================
@@ -482,8 +401,8 @@ const PLAN_BENEFITS: { [key: string]: PlanBenefits } = {
     diagnostics: '10% copay',
     consultation: '20% copay max AED 50'
   },
-  // === FIDELITY UNITED NE PLAN ===
-  'FIDELITY_UNITED_NE_BASIC': {
+  // === FIDELITY NE PLAN ===
+  'FIDELITY_NE_BASIC': {
     inpatient: 'AAFIA TPA network. Covered as per policy',
     outpatient: 'AAFIA network clinics',
     emergency: 'AAFIA network',
@@ -509,7 +428,7 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
     'SUPERIOR_MEDNET_0': { '0-5': {M: 3591, F: 3591}, '6-17': {M: 2394, F: 2394}, '18-30': {M: 2693, F: 4490}, '31-40': {M: 3591, F: 5687}, '41-50': {M: 4788, F: 6436}, '51-60': {M: 6884, F: 8530}, '61-65': {M: 9879, F: 11826} },
     'PREMIUM_MEDNET_0': { '0-5': {M: 4788, F: 4788}, '6-17': {M: 3192, F: 3192}, '18-30': {M: 3591, F: 5987}, '31-40': {M: 4788, F: 7583}, '41-50': {M: 6386, F: 8580}, '51-60': {M: 9179, F: 11374}, '61-65': {M: 13172, F: 15768} }
   },
-  'FIDELITY UNITED': {
+  'FIDELITY': {
     'CLASSIC_NAS_0': { '0-5': {M: 2500, F: 2500}, '6-17': {M: 1800, F: 1800}, '18-30': {M: 2000, F: 3200}, '31-40': {M: 2600, F: 4100}, '41-50': {M: 3400, F: 4600}, '51-60': {M: 4900, F: 6100}, '61-65': {M: 7000, F: 8500} },
     'CLASSIC_NAS_10': { '0-5': {M: 2250, F: 2250}, '6-17': {M: 1620, F: 1620}, '18-30': {M: 1800, F: 2880}, '31-40': {M: 2340, F: 3690}, '41-50': {M: 3060, F: 4140}, '51-60': {M: 4410, F: 5490}, '61-65': {M: 6300, F: 7650} },
     'CLASSIC_NAS_20': { '0-5': {M: 2000, F: 2000}, '6-17': {M: 1440, F: 1440}, '18-30': {M: 1600, F: 2560}, '31-40': {M: 2080, F: 3280}, '41-50': {M: 2720, F: 3680}, '51-60': {M: 3920, F: 4880}, '61-65': {M: 5600, F: 6800} },
@@ -785,8 +704,8 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
     'NEXTCARE_GN_PLUS_10': { '0-5': {M: 3195, F: 3195}, '6-17': {M: 2133, F: 2133}, '18-30': {M: 2403, F: 3987}, '31-40': {M: 3195, F: 5067}, '41-50': {M: 4257, F: 5787}, '51-60': {M: 6120, F: 7632}, '61-65': {M: 8802, F: 10593} },
     'NEXTCARE_GN_PLUS_20': { '0-5': {M: 2840, F: 2840}, '6-17': {M: 1896, F: 1896}, '18-30': {M: 2136, F: 3544}, '31-40': {M: 2840, F: 4504}, '41-50': {M: 3784, F: 5144}, '51-60': {M: 5440, F: 6784}, '61-65': {M: 7824, F: 9416} }
   },
-  // FIDELITY UNITED NEXTCARE Plans
-  'FIDELITY_UNITED_NEXTCARE': {
+  // FIDELITY NEXTCARE Plans
+  'FIDELITY_NEXTCARE': {
     'NEXTCARE_PCP_0': { '0-5': {M: 1900, F: 1900}, '6-17': {M: 1270, F: 1270}, '18-30': {M: 1430, F: 2370}, '31-40': {M: 1900, F: 3010}, '41-50': {M: 2530, F: 3440}, '51-60': {M: 3640, F: 4540}, '61-65': {M: 5240, F: 6300} },
     'NEXTCARE_PCP_10': { '0-5': {M: 1710, F: 1710}, '6-17': {M: 1143, F: 1143}, '18-30': {M: 1287, F: 2133}, '31-40': {M: 1710, F: 2709}, '41-50': {M: 2277, F: 3096}, '51-60': {M: 3276, F: 4086}, '61-65': {M: 4716, F: 5670} },
     'NEXTCARE_PCP_20': { '0-5': {M: 1520, F: 1520}, '6-17': {M: 1016, F: 1016}, '18-30': {M: 1144, F: 1896}, '31-40': {M: 1520, F: 2408}, '41-50': {M: 2024, F: 2752}, '51-60': {M: 2912, F: 3632}, '61-65': {M: 4192, F: 5040} },
@@ -899,8 +818,8 @@ const INSURANCE_DB: { [key: string]: { [key: string]: { [key: string]: { M: numb
     'NAS_CN_10': { '0-5': {M: 2925, F: 2925}, '6-17': {M: 1953, F: 1953}, '18-30': {M: 2196, F: 3645}, '31-40': {M: 2925, F: 4635}, '41-50': {M: 3897, F: 5292}, '51-60': {M: 5598, F: 6984}, '61-65': {M: 8055, F: 9684} },
     'NAS_CN_20': { '0-5': {M: 2600, F: 2600}, '6-17': {M: 1736, F: 1736}, '18-30': {M: 1952, F: 3240}, '31-40': {M: 2600, F: 4120}, '41-50': {M: 3464, F: 4704}, '51-60': {M: 4976, F: 6208}, '61-65': {M: 7160, F: 8608} }
   },
-  // FIDELITY UNITED NAS Plans
-  'FIDELITY_UNITED_NAS': {
+  // FIDELITY NAS Plans
+  'FIDELITY_NAS': {
     'NAS_VN_0': { '0-5': {M: 1850, F: 1850}, '6-17': {M: 1240, F: 1240}, '18-30': {M: 1390, F: 2310}, '31-40': {M: 1850, F: 2930}, '41-50': {M: 2470, F: 3350}, '51-60': {M: 3550, F: 4420}, '61-65': {M: 5100, F: 6140} },
     'NAS_VN_10': { '0-5': {M: 1665, F: 1665}, '6-17': {M: 1116, F: 1116}, '18-30': {M: 1251, F: 2079}, '31-40': {M: 1665, F: 2637}, '41-50': {M: 2223, F: 3015}, '51-60': {M: 3195, F: 3978}, '61-65': {M: 4590, F: 5526} },
     'NAS_VN_20': { '0-5': {M: 1480, F: 1480}, '6-17': {M: 992, F: 992}, '18-30': {M: 1112, F: 1848}, '31-40': {M: 1480, F: 2344}, '41-50': {M: 1976, F: 2680}, '51-60': {M: 2840, F: 3536}, '61-65': {M: 4080, F: 4912} },
@@ -1025,7 +944,7 @@ const MANUAL_PROVIDERS = [
   { id: 'DIC', name: 'DIC', networks: ['ISON', 'MEDNET', 'DUBAICARE'] },
   { id: 'ORIENT_MANUAL', name: 'ORIENT', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] },
   { id: 'ADAMJEE', name: 'ADAMJEE', networks: ['MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
-  { id: 'FIDELITY_MANUAL', name: 'FIDELITY UNITED', networks: ['NEXTCARE PCP RN3', 'NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
+  { id: 'FIDELITY_MANUAL', name: 'FIDELITY', networks: ['NEXTCARE PCP RN3', 'NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
   { id: 'DUBAI_INSURANCE', name: 'DUBAI INSURANCE', networks: ['DUBAICARE N5', 'DUBAICARE N3', 'DUBAICARE N2', 'DUBAICARE EXCL N2', 'DUBAICARE N1', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold'] },
   { id: 'RAK', name: 'RAK', networks: ['NEXTCARE RN3', 'NEXTCARE RN2', 'NEXTCARE RN', 'NEXTCARE GN', 'NEXTCARE GN PLUS', 'MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
   { id: 'WATANIA_TAKAFUL_MANUAL', name: 'WATANIA TAKAFUL', networks: ['MEDNET SilkRoad', 'MEDNET Pearl', 'MEDNET Emerald', 'MEDNET Green', 'MEDNET Silver Classic', 'MEDNET Silver Premium', 'MEDNET Gold', 'NAS VN', 'NAS WN', 'NAS SRN', 'NAS RN', 'NAS GN', 'NAS CN'] },
@@ -1163,9 +1082,7 @@ export default function InsurancePortal() {
     try {
       const savedPlanEdits = localStorage.getItem(STORAGE_KEYS.PLAN_EDITS);
       if (savedPlanEdits) {
-        const parsed = JSON.parse(savedPlanEdits);
-        console.log('📥 Loaded plan edits from localStorage:', parsed);
-        setLocalPlanEdits(parsed);
+        setLocalPlanEdits(JSON.parse(savedPlanEdits));
       }
     } catch (e) {
       console.error('Error loading plan edits:', e);
@@ -1175,9 +1092,7 @@ export default function InsurancePortal() {
     try {
       const savedBenefitsEdits = localStorage.getItem(STORAGE_KEYS.BENEFITS_EDITS);
       if (savedBenefitsEdits) {
-        const parsed = JSON.parse(savedBenefitsEdits);
-        console.log('📥 Loaded benefits edits from localStorage:', parsed);
-        setLocalBenefitsEdits(parsed);
+        setLocalBenefitsEdits(JSON.parse(savedBenefitsEdits));
       }
     } catch (e) {
       console.error('Error loading benefits edits:', e);
@@ -1187,9 +1102,7 @@ export default function InsurancePortal() {
     try {
       const savedManualPlans = localStorage.getItem(STORAGE_KEYS.MANUAL_PLANS);
       if (savedManualPlans) {
-        const parsed = JSON.parse(savedManualPlans);
-        console.log('📥 Loaded manual plans from localStorage:', parsed);
-        setManualPlans(parsed);
+        setManualPlans(JSON.parse(savedManualPlans));
       }
     } catch (e) {
       console.error('Error loading manual plans:', e);
@@ -1239,77 +1152,26 @@ export default function InsurancePortal() {
     };
     loadCloudBenefits();
 
-    // Load cloud manual plans (read-only baseline) and merge with local plans
+    // Load cloud manual plans
     const loadCloudManualPlans = async () => {
       try {
-        // First, load from cloud (shared baseline - read-only)
-        let cloudPlans: { [key: string]: any[] } = {};
         const response = await fetch('/api/manual-plans');
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.plans) {
+            // Ensure each plan has benefits object
+            const plansWithBenefits: { [key: string]: any[] } = {};
             Object.keys(data.plans).forEach(providerKey => {
-              cloudPlans[providerKey] = data.plans[providerKey].map((plan: any) => ({
+              plansWithBenefits[providerKey] = data.plans[providerKey].map((plan: any) => ({
                 ...plan,
-                benefits: plan.benefits || defaultBenefits,
-                _isFromCloud: true  // Mark as cloud data
+                benefits: plan.benefits || defaultBenefits
               }));
             });
+            setManualPlans(plansWithBenefits);
           }
         }
-        
-        // Then, load local plans from localStorage (user's private additions)
-        let localPlans: { [key: string]: any[] } = {};
-        try {
-          const localData = localStorage.getItem(STORAGE_KEYS.MANUAL_PLANS);
-          if (localData) {
-            localPlans = JSON.parse(localData);
-          }
-        } catch (e) {
-          console.error('Error loading local manual plans:', e);
-        }
-        
-        // Merge: Start with cloud plans, then add/override with local plans
-        const mergedPlans: { [key: string]: any[] } = { ...cloudPlans };
-        
-        Object.keys(localPlans).forEach(providerKey => {
-          if (!mergedPlans[providerKey]) {
-            // New provider from local - add entirely
-            mergedPlans[providerKey] = localPlans[providerKey].map(plan => ({
-              ...plan,
-              benefits: plan.benefits || defaultBenefits,
-              _isLocal: true
-            }));
-          } else {
-            // Provider exists in both - merge plans
-            const cloudPlanIds = new Set(mergedPlans[providerKey].map(p => p.id));
-            localPlans[providerKey].forEach(localPlan => {
-              if (cloudPlanIds.has(localPlan.id)) {
-                // Override cloud plan with local version
-                mergedPlans[providerKey] = mergedPlans[providerKey].map(p => 
-                  p.id === localPlan.id ? { ...localPlan, _isLocal: true } : p
-                );
-              } else {
-                // Add new local plan
-                mergedPlans[providerKey].push({ ...localPlan, _isLocal: true });
-              }
-            });
-          }
-        });
-        
-        console.log('📦 Merged manual plans - Cloud:', Object.keys(cloudPlans).length, 'providers, Local:', Object.keys(localPlans).length, 'providers');
-        setManualPlans(mergedPlans);
       } catch (error) {
         console.error('Error loading cloud manual plans:', error);
-        // Fallback to local only
-        try {
-          const localData = localStorage.getItem(STORAGE_KEYS.MANUAL_PLANS);
-          if (localData) {
-            setManualPlans(JSON.parse(localData));
-          }
-        } catch (e) {
-          console.error('Error loading local manual plans:', e);
-        }
       }
     };
     loadCloudManualPlans();
@@ -1338,7 +1200,6 @@ export default function InsurancePortal() {
   // Save plan edits to localStorage whenever they change
   useEffect(() => {
     if (Object.keys(localPlanEdits).length > 0) {
-      console.log('💾 Saving plan edits to localStorage:', localPlanEdits);
       localStorage.setItem(STORAGE_KEYS.PLAN_EDITS, JSON.stringify(localPlanEdits));
     }
   }, [localPlanEdits]);
@@ -1346,16 +1207,13 @@ export default function InsurancePortal() {
   // Save benefits edits to localStorage whenever they change
   useEffect(() => {
     if (Object.keys(localBenefitsEdits).length > 0) {
-      console.log('💾 Saving benefits edits to localStorage:', localBenefitsEdits);
       localStorage.setItem(STORAGE_KEYS.BENEFITS_EDITS, JSON.stringify(localBenefitsEdits));
     }
   }, [localBenefitsEdits]);
 
-  // Save manual plans to localStorage whenever they change (only if not empty)
+  // Save manual plans to localStorage whenever they change
   useEffect(() => {
-    if (Object.keys(manualPlans).length > 0) {
-      localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(manualPlans));
-    }
+    localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(manualPlans));
   }, [manualPlans]);
 
   // Save custom providers to localStorage whenever they change
@@ -1375,9 +1233,19 @@ export default function InsurancePortal() {
       return { ...cloudBenefits[planId] };
     }
     
-    const planKey = `${provider}_${planName}`;
+    // Normalize provider name: replace spaces with underscores for consistent key lookup
+    // This fixes Fidelity United (provider="FIDELITY UNITED") matching cloud/hardcoded keys (FIDELITY_UNITED_...)
+    const normalizedProvider = provider.replace(/\s+/g, '_').toUpperCase();
+    const planKey = `${normalizedProvider}_${planName}`;
+    const originalPlanKey = `${provider}_${planName}`;
+    
+    // Check cloud benefits first (priority over hardcoded) - try both key formats
     if (cloudBenefits[planKey]) return { ...cloudBenefits[planKey] };
+    if (cloudBenefits[originalPlanKey]) return { ...cloudBenefits[originalPlanKey] };
+    
+    // Then check hardcoded PLAN_BENEFITS - try both key formats
     if (PLAN_BENEFITS[planKey]) return { ...PLAN_BENEFITS[planKey] };
+    if (PLAN_BENEFITS[originalPlanKey]) return { ...PLAN_BENEFITS[originalPlanKey] };
     
     // Check if it's a MEDNET plan - return MEDNET benefits
     if (planName.includes('MEDNET_') || provider.includes('_MEDNET')) {
@@ -1405,27 +1273,28 @@ export default function InsurancePortal() {
     return { ...defaultBenefits };
   };
 
-  // Apply local plan edits to a plan (LOCAL edits for plan/network/copay - NO premium saving)
+  // Apply local plan edits to a plan (cloud edits for plan/network/copay, local for premium)
   const applyLocalEdits = (plan: InsurancePlan, memberId?: number): InsurancePlan => {
-    // LOCAL edits for plan name, network, copay (saved to localStorage with planId key)
-    const localPlanLevelEdits = localPlanEdits[plan.id];
-    
-    // CLOUD edits for plan name, network, copay (existing shared data - read only)
+    // Cloud edits for plan name, network, copay (shared across all users)
     const cloudEdits = cloudPlanEdits[plan.id];
+    
+    // Member-specific key for premium only
+    const memberPlanKey = memberId !== undefined ? `${memberId}_${plan.id}` : plan.id;
+    const localEdits = localPlanEdits[memberPlanKey];
     
     // Check local edits first, then cloud benefits for benefits
     const benefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
     
-    if (!localPlanLevelEdits && !cloudEdits && !benefitsEdits) return plan;
+    if (!cloudEdits && !localEdits && !benefitsEdits) return plan;
     
     return {
       ...plan,
-      // LOCAL edits take priority over cloud edits
-      plan: localPlanLevelEdits?.plan || cloudEdits?.plan || plan.plan,
-      network: localPlanLevelEdits?.network || cloudEdits?.network || plan.network,
-      copay: localPlanLevelEdits?.copay || cloudEdits?.copay || plan.copay,
-      // Premium is NEVER saved - always comes from original plan data or user input during session
-      premium: plan.premium,
+      // Plan name, network, copay come from cloud edits (shared)
+      plan: cloudEdits?.plan || plan.plan,
+      network: cloudEdits?.network || plan.network,
+      copay: cloudEdits?.copay || plan.copay,
+      // Premium comes from local member-specific edits
+      premium: localEdits?.premium !== undefined ? localEdits.premium : plan.premium,
       benefits: benefitsEdits || plan.benefits
     };
   };
@@ -1523,8 +1392,13 @@ export default function InsurancePortal() {
           // Add the manual plan to each member's comparison list
           const existingPlans = updated[memberId].comparison;
           const newComparison = [...existingPlans, { ...plan }];
-          // Sort by premium
-          newComparison.sort((a, b) => a.premium - b.premium);
+          // Sort by premium (N/A plans go to end)
+          newComparison.sort((a, b) => {
+            if (a.premium === null && b.premium === null) return 0;
+            if (a.premium === null) return 1;
+            if (b.premium === null) return -1;
+            return a.premium - b.premium;
+          });
           updated[memberId] = {
             ...updated[memberId],
             comparison: newComparison
@@ -1534,17 +1408,21 @@ export default function InsurancePortal() {
       });
     }
     
-    // Save to localStorage only (private to this user)
+    // Save to cloud for persistence and sharing
     try {
-      localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(updatedManualPlans));
+      await fetch('/api/manual-plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plans: updatedManualPlans })
+      });
       setNewManualPlan({ planName: '', network: '', copay: '', premium: '' });
       setShowManualPlanModal(false);
-      alert('✅ Plan added and saved to your system only. Other users will not see this plan.');
+      alert('✅ Plan added and saved! It will be visible to anyone with this link.');
     } catch (error) {
-      console.error('Error saving locally:', error);
+      console.error('Error saving to cloud:', error);
       setNewManualPlan({ planName: '', network: '', copay: '', premium: '' });
       setShowManualPlanModal(false);
-      alert('⚠️ Plan added but could not save. Check browser storage.');
+      alert('✅ Plan added locally. Cloud sync may be unavailable.');
     }
   };
 
@@ -1572,11 +1450,15 @@ export default function InsurancePortal() {
       });
     }
     
-    // Save updated plans to localStorage only (private to this user)
+    // Save updated plans to cloud
     try {
-      localStorage.setItem(STORAGE_KEYS.MANUAL_PLANS, JSON.stringify(updatedManualPlans));
+      await fetch('/api/manual-plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plans: updatedManualPlans })
+      });
     } catch (error) {
-      console.error('Error saving locally:', error);
+      console.error('Error saving to cloud:', error);
     }
   };
 
@@ -1628,10 +1510,14 @@ export default function InsurancePortal() {
           }
 
           const ageBand = findAgeBand(age, provider, planName);
-          if (ageBand) {
-            const rateData = plans[planName][ageBand];
-            if (rateData && rateData[genderKey as 'M' | 'F']) {
-              const premium = rateData[genderKey as 'M' | 'F'];
+          
+          // For 65+ members, include ALL plans even without age band (show as N/A)
+          // For other ages, only include plans with valid age bands
+          const isOver65 = age >= 65;
+          const hasValidRate = ageBand && plans[planName][ageBand] && plans[planName][ageBand][genderKey as 'M' | 'F'];
+          
+          if (hasValidRate || isOver65) {
+            const premium = hasValidRate ? plans[planName][ageBand!][genderKey as 'M' | 'F'] : null;
               
               let displayName = planName.replace(/_/g, ' ');
               let network = 'Standard';
@@ -1668,7 +1554,7 @@ export default function InsurancePortal() {
               else if (planName.includes('MEDNET')) network = 'MEDNET';
               else if (planName.includes('NAS')) network = 'NAS';
               else if (planName.includes('NEXTCARE')) network = 'NEXTCARE';
-              else if (provider === 'FIDELITY UNITED' && planName.includes('NE')) network = 'AAFIA TPA';
+              else if (provider === 'FIDELITY' && planName.includes('NE')) network = 'AAFIA TPA';
               else if (provider === 'UFIC') network = 'UFIC Network';
               else if (provider.includes('WATANIA') && !provider.includes('MEDNET') && !provider.includes('NAS')) network = 'NAS/Mednet TPA';
               else if (provider.includes('ORIENT') && !provider.includes('MEDNET') && !provider.includes('NEXTCARE')) network = 'Orient/Nextcare';
@@ -1691,14 +1577,14 @@ export default function InsurancePortal() {
                 status: 'none',
                 benefits: getPlanBenefits(provider, planName, planId),
                 planLocation: isDubaiPlan ? 'Dubai' : 'Northern Emirates',
-                salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All'
+                salaryCategory: planName.includes('_LSB') ? 'Below 4K' : planName.includes('_NLSB') ? 'Above 4K' : 'All',
+                hasNoPremium: premium === null  // Flag for 65+ plans without rates
               };
               
               // Apply any local edits
               basePlan = applyLocalEdits(basePlan);
               
               memberPlans.push(basePlan);
-            }
           }
         });
       });
@@ -1725,15 +1611,26 @@ export default function InsurancePortal() {
         }
       });
 
-      memberPlans.sort((a, b) => a.premium - b.premium);
+      // Sort plans: valid premiums first (ascending), then N/A plans at the end
+      memberPlans.sort((a, b) => {
+        if (a.premium === null && b.premium === null) return 0;
+        if (a.premium === null) return 1;  // N/A plans go to end
+        if (b.premium === null) return -1;
+        return a.premium - b.premium;
+      });
 
+      // Calculate stats excluding N/A plans
+      const plansWithPremium = memberPlans.filter(p => p.premium !== null);
+      const naPremiumCount = memberPlans.filter(p => p.premium === null).length;
+      
       newMemberResults[member.id] = {
         member,
         age,
         comparison: memberPlans,
-        minPrice: memberPlans.length > 0 ? Math.min(...memberPlans.map(r => r.premium)) : 0,
-        maxPrice: memberPlans.length > 0 ? Math.max(...memberPlans.map(r => r.premium)) : 0,
-        avgPrice: memberPlans.length > 0 ? memberPlans.reduce((sum, r) => sum + r.premium, 0) / memberPlans.length : 0
+        minPrice: plansWithPremium.length > 0 ? Math.min(...plansWithPremium.map(r => r.premium as number)) : 0,
+        maxPrice: plansWithPremium.length > 0 ? Math.max(...plansWithPremium.map(r => r.premium as number)) : 0,
+        avgPrice: plansWithPremium.length > 0 ? plansWithPremium.reduce((sum, r) => sum + (r.premium as number), 0) / plansWithPremium.length : 0,
+        naPremiumCount
       };
     });
 
@@ -1828,7 +1725,7 @@ export default function InsurancePortal() {
     setShowEditResultPlanModal(true);
   };
 
-  // Save edited result plan (plan/network/copay saved permanently, premium is session-only)
+  // Save edited result plan (cloud for plan/network/copay, local for premium)
   const saveEditedResultPlan = async () => {
     if (!editingResultPlan || !editingResultPlan.plan || !editingResultPlan.premium) {
       alert('Please enter plan name and premium');
@@ -1841,25 +1738,29 @@ export default function InsurancePortal() {
     }
     
     const planId = editingResultPlan.id;
+    const memberPlanKey = `${editingMemberId}_${planId}`;
     
-    // Plan/network/copay data - saved PERMANENTLY to localStorage
-    const planEditData = {
+    // Cloud data for plan name, network, copay (shared across all users)
+    const cloudEditData = {
       plan: editingResultPlan.plan,
       network: editingResultPlan.network || 'Standard',
       copay: editingResultPlan.copay || 'Variable'
     };
     
-    // Premium - NOT saved permanently (session only, member-specific)
+    // Local data for premium only (member-specific)
     const premiumValue = parseFloat(editingResultPlan.premium);
 
-    // Save plan/network/copay to localStorage (persists across refresh)
+    // Save premium to localStorage with member-specific key
     setLocalPlanEdits(prev => ({
       ...prev,
-      [planId]: planEditData  // Key is just planId, not member-specific
+      [memberPlanKey]: { premium: premiumValue }
     }));
+    
+    // Update cloudPlanEdits state immediately
+    setCloudPlanEdits(prev => ({ ...prev, [planId]: cloudEditData }));
 
     // Update current session state for ALL members with this plan (for plan/network/copay)
-    // Premium only changes for the CURRENT member being edited (session only)
+    // But only update premium for the current member
     setMemberResults(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(mKey => {
@@ -1869,11 +1770,11 @@ export default function InsurancePortal() {
           comparison: updated[mId].comparison.map((item: any) =>
             item.id === planId ? {
               ...item,
-              // Plan name, network, copay apply to all members (saved permanently)
-              plan: planEditData.plan,
-              network: planEditData.network,
-              copay: planEditData.copay,
-              // Premium only changes for the current member (NOT saved - session only)
+              // Plan name, network, copay apply to all members
+              plan: cloudEditData.plan,
+              network: cloudEditData.network,
+              copay: cloudEditData.copay,
+              // Premium only changes for the current member being edited
               premium: mId === editingMemberId ? premiumValue : item.premium
             } : item
           )
@@ -1882,8 +1783,32 @@ export default function InsurancePortal() {
       return updated;
     });
 
-    console.log('💾 Plan edit saved to localStorage:', planId, planEditData);
-    console.log('💡 Premium NOT saved (session only for member', editingMemberId, '):', premiumValue);
+    // Save plan/network/copay to cloud using the existing benefits API with a prefix
+    try {
+      const savePayload = { 
+        planKey: `PLAN_EDIT_${planId}`, 
+        benefits: { ...cloudEditData, _isPlanEdit: true } 
+      };
+      console.log('📤 Saving plan edit to cloud:', savePayload);
+      
+      const response = await fetch('/api/benefits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savePayload)
+      });
+      
+      const result = await response.json();
+      console.log('📥 Save response:', result);
+      
+      if (result.success) {
+        alert('✅ Plan details (name, network, copay) saved to cloud! Premium updated for this member only.');
+      } else {
+        alert('⚠️ Save may have failed. Check console for details.');
+      }
+    } catch (error) {
+      console.error('Error saving plan edits to cloud:', error);
+      alert('❌ Cloud sync failed! Changes saved locally only.');
+    }
 
     setShowEditResultPlanModal(false);
     setEditingResultPlan(null);
@@ -1915,7 +1840,7 @@ export default function InsurancePortal() {
     }
   };
 
-  // Update benefits - SAVES TO LOCALSTORAGE ONLY (persists on this system)
+  // Update benefits - NOW SAVES TO LOCALSTORAGE AND CLOUD FOR PERSISTENCE
   const updateBenefits = async (memberId: number, planId: string) => {
     const key = `${memberId}_${planId}`;
     const updatedBenefits = editingBenefits[key];
@@ -1926,7 +1851,7 @@ export default function InsurancePortal() {
     const isManualPlan = plan?.isManual;
     const providerKey = plan?.providerKey;
     
-    // Save to localStorage for persistence (via useEffect trigger)
+    // Save to localStorage for persistence
     setLocalBenefitsEdits(prev => ({
       ...prev,
       [planId]: updatedBenefits
@@ -1947,18 +1872,43 @@ export default function InsurancePortal() {
       return updated;
     });
     
-    // If it's a manual plan, also update the manual plan object in state
+    // Update cloudBenefits state immediately
+    setCloudBenefits(prev => ({ ...prev, [planId]: updatedBenefits }));
+    
+    // If it's a manual plan, update the manual plan object in state and cloud
     if (isManualPlan && providerKey) {
-      setManualPlans(prevManualPlans => ({
-        ...prevManualPlans,
-        [providerKey]: prevManualPlans[providerKey]?.map(p => 
-          p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
-        ) || []
-      }));
+      // Use functional update to get latest manualPlans state
+      setManualPlans(prevManualPlans => {
+        const updatedManualPlans = {
+          ...prevManualPlans,
+          [providerKey]: prevManualPlans[providerKey]?.map(p => 
+            p.id === planId ? { ...p, benefits: { ...updatedBenefits } } : p
+          ) || []
+        };
+        
+        // Save updated manual plans to cloud (async, don't await inside setState)
+        fetch('/api/manual-plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plans: updatedManualPlans })
+        }).catch(error => console.error('Error saving manual plan benefits to cloud:', error));
+        
+        return updatedManualPlans;
+      });
     }
     
-    console.log('💾 Benefits saved:', planId);
-    alert('✅ Benefits saved! (This system only)');
+    // Also save to benefits cloud endpoint (for all plans)
+    try {
+      await fetch('/api/benefits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planKey: planId, benefits: updatedBenefits })
+      });
+      alert('✅ Benefits saved! Changes will sync to all users.');
+    } catch (error) {
+      console.error('Error saving benefits to cloud:', error);
+      alert('✅ Benefits saved locally! Cloud sync may be unavailable.');
+    }
     
     setShowBenefits(prev => ({ ...prev, [key]: false }));
   };
@@ -2148,7 +2098,7 @@ export default function InsurancePortal() {
                 else if (planName.includes('MEDNET')) network = 'MEDNET';
                 else if (planName.includes('NAS')) network = 'NAS';
                 else if (planName.includes('NEXTCARE')) network = 'NEXTCARE';
-                else if (provider === 'FIDELITY UNITED' && planName.includes('NE')) network = 'AAFIA TPA';
+                else if (provider === 'FIDELITY' && planName.includes('NE')) network = 'AAFIA TPA';
                 else if (provider === 'UFIC') network = 'UFIC Network';
                 else if (provider.includes('WATANIA') && !provider.includes('MEDNET') && !provider.includes('NAS')) network = 'NAS/Mednet TPA';
                 else if (provider.includes('ORIENT') && !provider.includes('MEDNET') && !provider.includes('NEXTCARE')) network = 'Orient/Nextcare';
@@ -2202,15 +2152,26 @@ export default function InsurancePortal() {
           }
         });
 
-        memberPlans.sort((a, b) => a.premium - b.premium);
+        // Sort plans: valid premiums first (ascending), then N/A plans at the end
+        memberPlans.sort((a, b) => {
+          if (a.premium === null && b.premium === null) return 0;
+          if (a.premium === null) return 1;
+          if (b.premium === null) return -1;
+          return a.premium - b.premium;
+        });
+
+        // Calculate stats excluding N/A plans
+        const plansWithPremium = memberPlans.filter(p => p.premium !== null);
+        const naPremiumCount = memberPlans.filter(p => p.premium === null).length;
 
         newMemberResults[member.id] = {
           member,
           age,
           comparison: memberPlans,
-          minPrice: memberPlans.length > 0 ? Math.min(...memberPlans.map(r => r.premium)) : 0,
-          maxPrice: memberPlans.length > 0 ? Math.max(...memberPlans.map(r => r.premium)) : 0,
-          avgPrice: memberPlans.length > 0 ? memberPlans.reduce((sum, r) => sum + r.premium, 0) / memberPlans.length : 0
+          minPrice: plansWithPremium.length > 0 ? Math.min(...plansWithPremium.map(r => r.premium as number)) : 0,
+          maxPrice: plansWithPremium.length > 0 ? Math.max(...plansWithPremium.map(r => r.premium as number)) : 0,
+          avgPrice: plansWithPremium.length > 0 ? plansWithPremium.reduce((sum, r) => sum + (r.premium as number), 0) / plansWithPremium.length : 0,
+          naPremiumCount
         };
       });
 
@@ -2351,12 +2312,15 @@ export default function InsurancePortal() {
       return null;
     }).filter(Boolean) as InsurancePlan[];
     
-    // Sort: renewals first, then by premium (lowest first)
+    // Sort: renewals first, then by premium (lowest first), N/A at end
     selectedPlans.sort((a, b) => {
       // Renewals come first
       if (a.status === 'renewal' && b.status !== 'renewal') return -1;
       if (b.status === 'renewal' && a.status !== 'renewal') return 1;
-      // Then sort by premium
+      // Then sort by premium (N/A plans go to end)
+      if (a.premium === null && b.premium === null) return 0;
+      if (a.premium === null) return 1;
+      if (b.premium === null) return -1;
       return a.premium - b.premium;
     });
 
@@ -2380,7 +2344,7 @@ export default function InsurancePortal() {
       allMembersWithSelections.forEach(m => {
         const memberResult = memberResults[m.member.id];
         const memberPlan = memberResult?.comparison.find(p => p.id === plan.id);
-        if (memberPlan) {
+        if (memberPlan && memberPlan.premium !== null) {
           grossPremium += memberPlan.premium;
           memberCount++;
         }
@@ -2434,19 +2398,14 @@ export default function InsurancePortal() {
       <thead>
         <tr>
           <th class="col-benefit">BENEFITS</th>
-          ${selectedPlans.map(plan => {
-            const logoUrl = getProviderLogo(plan.provider);
-            return `
+          ${selectedPlans.map(plan => `
             <th class="col-plan">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-                ${logoUrl ? `<img src="${logoUrl}" alt="${plan.provider}" style="width:60px;height:40px;object-fit:contain;" onerror="this.style.display='none'">` : ''}
-                <span>${plan.provider}</span>
-              </div>
+              ${plan.provider}
               ${plan.status === 'renewal' ? '<div class="tag tag-renewal">RENEWAL</div>' : ''}
               ${plan.status === 'alternative' ? '<div class="tag tag-alternative">ALTERNATIVE</div>' : ''}
               ${plan.status === 'recommended' ? '<div class="tag tag-recommended">RECOMMENDED</div>' : ''}
             </th>
-          `}).join('')}
+          `).join('')}
         </tr>
       </thead>
       <tbody>
@@ -2477,6 +2436,9 @@ export default function InsurancePortal() {
               const memberResult = memberResults[m.member.id];
               const memberPlan = memberResult?.comparison.find(p => p.id === plan.id);
               if (memberPlan) {
+                if (memberPlan.premium === null) {
+                  return `<td class="cell-premium" style="color: #d97706;">N/A</td>`;
+                }
                 return `<td class="cell-premium">AED ${memberPlan.premium.toLocaleString('en-AE', { minimumFractionDigits: 2 })}</td>`;
               }
               return `<td class="cell-premium">-</td>`;
@@ -2503,8 +2465,8 @@ export default function InsurancePortal() {
     </table>
 
     ${advisorComment ? `
-    <div class="advisor-box">
-      <b>Advisor Comment:</b> ${advisorComment}
+    <div class="advisor-box" style="white-space: pre-wrap;">
+      <b>Advisor Comment:</b><br/>${advisorComment.replace(/\n/g, '<br/>')}
     </div>
     ` : ''}
 
@@ -2634,14 +2596,13 @@ export default function InsurancePortal() {
       overflow-wrap: break-word;
     }
     .main-table th {
-      background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
-      color: #1e40af;
+      background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+      color: white;
       font-weight: bold;
       font-size: 9px;
       padding: 6px 5px;
-      border-bottom: 2px solid #3b82f6;
     }
-    .col-benefit { text-align: left !important; background: #dbeafe !important; color: #1e40af !important; }
+    .col-benefit { text-align: left !important; background: #1e40af !important; }
     .col-plan { min-width: 100px; }
     
     .cell-label {
@@ -3196,7 +3157,23 @@ ${consolidatedTable}
                           <p className="text-xs text-gray-600">Selected</p>
                           <p className="font-bold text-orange-700">{selectedCount}</p>
                         </div>
+                        {results.naPremiumCount && results.naPremiumCount > 0 && (
+                          <div className="p-3 bg-amber-50 rounded-lg text-center border border-amber-200">
+                            <p className="text-xs text-gray-600">N/A Plans</p>
+                            <p className="font-bold text-amber-700">{results.naPremiumCount}</p>
+                          </div>
+                        )}
                       </div>
+
+                      {/* 65+ Age Notice Banner */}
+                      {results.naPremiumCount && results.naPremiumCount > 0 && results.age >= 65 && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                          <p className="text-sm text-amber-800">
+                            <span className="font-bold">⚠️ Age 65+ Notice:</span> {results.naPremiumCount} plans show "N/A" because they don't have standard rates for this age group. 
+                            Click <span className="inline-block px-1 bg-blue-100 rounded text-xs">✏️</span> to manually enter premium.
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex gap-3 mb-4">
                         <button onClick={() => setShowSelected(prev => ({ ...prev, [member.id]: !prev[member.id] }))} className={`px-4 py-2 rounded-lg text-sm font-medium ${showSelected[member.id] ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
@@ -3230,23 +3207,22 @@ ${consolidatedTable}
                             {displayPlans.map((plan, planIdx) => {
                               const actualRank = results.comparison.findIndex(p => p.id === plan.id) + 1;
                               const benefitsKey = `${member.id}_${plan.id}`;
-                              // Check for LOCAL edits first (plan/network/copay saved to localStorage)
-                              const hasLocalPlanEdits = localPlanEdits[plan.id];
-                              // Then check CLOUD edits (existing shared data)
+                              const memberPlanKey = `${member.id}_${plan.id}`;
+                              // Check for cloud edits (plan/network/copay) and local edits (premium)
                               const hasCloudEdits = cloudPlanEdits[plan.id];
+                              const hasLocalPremiumEdit = localPlanEdits[memberPlanKey]?.premium !== undefined;
                               const hasBenefitsEdits = localBenefitsEdits[plan.id] || cloudBenefits[plan.id];
-                              const hasAnyEdits = hasLocalPlanEdits || hasCloudEdits || hasBenefitsEdits;
+                              const hasAnyEdits = hasCloudEdits || hasLocalPremiumEdit || hasBenefitsEdits;
                               
-                              // Apply LOCAL edits first, then cloud edits for plan/network/copay
-                              // Premium is NOT saved - always from original plan data
+                              // Apply cloud edits for plan/network/copay, local edits for premium
                               const displayPlan = {
                                 ...plan,
-                                // LOCAL edits take priority over cloud edits
-                                plan: localPlanEdits[plan.id]?.plan || cloudPlanEdits[plan.id]?.plan || plan.plan,
-                                network: localPlanEdits[plan.id]?.network || cloudPlanEdits[plan.id]?.network || plan.network,
-                                copay: localPlanEdits[plan.id]?.copay || cloudPlanEdits[plan.id]?.copay || plan.copay,
-                                // Premium is session-only (from plan data or current session edits)
-                                premium: plan.premium
+                                // Cloud edits for plan name, network, copay (shared across all users)
+                                plan: cloudPlanEdits[plan.id]?.plan || plan.plan,
+                                network: cloudPlanEdits[plan.id]?.network || plan.network,
+                                copay: cloudPlanEdits[plan.id]?.copay || plan.copay,
+                                // Local edits for premium (member-specific)
+                                premium: localPlanEdits[memberPlanKey]?.premium !== undefined ? localPlanEdits[memberPlanKey].premium : plan.premium
                               };
                               
                               return (
@@ -3259,18 +3235,8 @@ ${consolidatedTable}
                                       ) : actualRank}
                                     </td>
                                     <td className="p-2 font-medium">
-                                      <div className="flex items-center gap-2">
-                                        {getProviderLogo(displayPlan.provider) && (
-                                          <img 
-                                            src={getProviderLogo(displayPlan.provider) || ''} 
-                                            alt={displayPlan.provider} 
-                                            className="w-8 h-5 object-contain"
-                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                          />
-                                        )}
-                                        <span>{displayPlan.provider}</span>
-                                        {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
-                                      </div>
+                                      {displayPlan.provider}
+                                      {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.network}</td>
                                     <td className="p-2">
@@ -3278,7 +3244,16 @@ ${consolidatedTable}
                                       {hasAnyEdits && <span className="ml-1 text-blue-500 text-xs">✎</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.copay}</td>
-                                    <td className="p-2 text-right font-semibold text-blue-700">AED {displayPlan.premium?.toLocaleString()}</td>
+                                    <td className={`p-2 text-right font-semibold ${displayPlan.premium === null ? 'text-orange-600' : 'text-blue-700'}`}>
+                                      {displayPlan.premium === null ? (
+                                        <span className="flex items-center justify-end gap-1">
+                                          <span>N/A</span>
+                                          <span className="text-xs text-gray-500">[65+]</span>
+                                        </span>
+                                      ) : (
+                                        `AED ${displayPlan.premium?.toLocaleString()}`
+                                      )}
+                                    </td>
                                     <td className="p-2 text-center">
                                       <select value={plan.status} onChange={(e) => updatePlanStatus(member.id, plan.id, e.target.value)} className="text-xs px-2 py-1 border rounded">
                                         <option value="none">-</option>
