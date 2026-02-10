@@ -83,6 +83,83 @@ const STORAGE_KEYS = {
 };
 
 // ============================================================================
+// PROVIDER LOGOS - Insurance Company Logos (33 companies)
+// ============================================================================
+const PROVIDER_LOGOS: { [key: string]: string } = {
+  // Imgur hosted logos
+  'SUKOON': 'https://i.imgur.com/hCWlUMe.jpeg',
+  'DNI': 'https://i.imgur.com/HKXpfsU.jpeg',
+  'DNIRC': 'https://i.imgur.com/HKXpfsU.jpeg',
+  'DUBAI NATIONAL': 'https://i.imgur.com/HKXpfsU.jpeg',
+  'QATAR': 'https://i.imgur.com/5d63cLP.png',
+  'QATAR INSURANCE': 'https://i.imgur.com/5d63cLP.png',
+  'QIC': 'https://i.imgur.com/5d63cLP.png',
+  'WATANIA': 'https://i.imgur.com/KaVFAu6.jpeg',
+  'ADAMJEE': 'https://i.imgur.com/dufDDqK.jpeg',
+  'FIDELITY': 'https://i.imgur.com/T26OgNE.jpeg',
+  'FIDELITY UNITED': 'https://i.imgur.com/T26OgNE.jpeg',
+  'LIVA': 'https://i.imgur.com/BqDrkcY.jpeg',
+  'EMIRATES': 'https://i.imgur.com/8cnZRff.jpeg',
+  'EMIRATES INSURANCE': 'https://i.imgur.com/8cnZRff.jpeg',
+  'EIC': 'https://i.imgur.com/8cnZRff.jpeg',
+  'RAK': 'https://i.imgur.com/HS6ctxT.png',
+  'RAK INSURANCE': 'https://i.imgur.com/HS6ctxT.png',
+  'RAKIC': 'https://i.imgur.com/HS6ctxT.png',
+  'SALAMA': 'https://i.imgur.com/Kx5sGSA.jpeg',
+  'INSURANCE HOUSE': 'https://i.imgur.com/OodWGYQ.jpeg',
+  'IH': 'https://i.imgur.com/OodWGYQ.jpeg',
+  'NEW INDIA': 'https://i.imgur.com/oUeb8HP.png',
+  'NIA': 'https://i.imgur.com/oUeb8HP.png',
+  'METHAQ': 'https://i.imgur.com/FjNhizV.jpeg',
+  'NGI': 'https://i.imgur.com/ye6IvRS.jpeg',
+  'NATIONAL GENERAL': 'https://i.imgur.com/ye6IvRS.jpeg',
+  'GIG': 'https://i.imgur.com/Kho3VbT.png',
+  'GULF INSURANCE': 'https://i.imgur.com/Kho3VbT.png',
+  'AL WATHBA': 'https://i.imgur.com/eulYgMf.jpeg',
+  'WATHBA': 'https://i.imgur.com/eulYgMf.jpeg',
+  'ORIENT': 'https://i.imgur.com/eIN9e72.png',
+  'ORIENT INSURANCE': 'https://i.imgur.com/eIN9e72.png',
+  'UNION INSURANCE': 'https://i.imgur.com/sdmPCNl.jpeg',
+  'AL SAGR': 'https://i.ibb.co/RkWHHjVP/al-sagr-insurance-logo-final-correction-as-of-10-05-2018.jpg',
+  'ALSAGR': 'https://i.ibb.co/RkWHHjVP/al-sagr-insurance-logo-final-correction-as-of-10-05-2018.jpg',
+  'AL ITTIHAD AL WATANI': 'https://i.imgur.com/UpraA62.jpeg',
+  'ITTIHAD': 'https://i.imgur.com/UpraA62.jpeg',
+  // ImgBB hosted logos
+  'WATANIA TAKAFUL': 'https://i.ibb.co/PGzjTYWf/Watania.jpg',
+  'AL BUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
+  'ALBUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
+  'BUHAIRA': 'https://i.ibb.co/1YJWgTHY/al-buhaira.jpg',
+  'ADNIC': 'https://i.ibb.co/PZhskxpb/ADNIC.jpg',
+  'ABU DHABI NATIONAL': 'https://i.ibb.co/PZhskxpb/ADNIC.jpg',
+  'ADNTC': 'https://i.ibb.co/Hpk1Qh07/ADNTC.jpg',
+  'ABU DHABI NATIONAL TAKAFUL': 'https://i.ibb.co/Hpk1Qh07/ADNTC.jpg',
+  'ORIENT TAKAFUL': 'https://i.ibb.co/chFfxJ0K/orient-takafu.jpg',
+  'TAKAFUL EMARAT': 'https://i.ibb.co/2LjDzfG/Takaful-Emarat.png',
+  'DUBAI INSURANCE': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
+  'DIC': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
+};
+
+// Helper function to get logo URL for a provider
+const getProviderLogo = (provider: string): string | null => {
+  if (!provider) return null;
+  const upperProvider = provider.toUpperCase().trim();
+  
+  // Direct match
+  if (PROVIDER_LOGOS[upperProvider]) {
+    return PROVIDER_LOGOS[upperProvider];
+  }
+  
+  // Partial match - check if provider name contains any key
+  for (const key of Object.keys(PROVIDER_LOGOS)) {
+    if (upperProvider.includes(key) || key.includes(upperProvider)) {
+      return PROVIDER_LOGOS[key];
+    }
+  }
+  
+  return null;
+};
+
+// ============================================================================
 // DEFAULT BENEFITS
 // ============================================================================
 const defaultBenefits: PlanBenefits = {
@@ -2398,14 +2475,19 @@ export default function InsurancePortal() {
       <thead>
         <tr>
           <th class="col-benefit">BENEFITS</th>
-          ${selectedPlans.map(plan => `
+          ${selectedPlans.map(plan => {
+            const logoUrl = getProviderLogo(plan.provider);
+            return `
             <th class="col-plan">
-              ${plan.provider}
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                ${logoUrl ? `<img src="${logoUrl}" alt="" style="width: 60px; height: 40px; object-fit: contain; border-radius: 4px;" />` : ''}
+                <span>${plan.provider}</span>
+              </div>
               ${plan.status === 'renewal' ? '<div class="tag tag-renewal">RENEWAL</div>' : ''}
               ${plan.status === 'alternative' ? '<div class="tag tag-alternative">ALTERNATIVE</div>' : ''}
               ${plan.status === 'recommended' ? '<div class="tag tag-recommended">RECOMMENDED</div>' : ''}
             </th>
-          `).join('')}
+          `}).join('')}
         </tr>
       </thead>
       <tbody>
@@ -2596,13 +2678,13 @@ export default function InsurancePortal() {
       overflow-wrap: break-word;
     }
     .main-table th {
-      background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
-      color: white;
+     background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e3a8a;
       font-weight: bold;
       font-size: 9px;
       padding: 6px 5px;
     }
-    .col-benefit { text-align: left !important; background: #1e40af !important; }
+    .col-benefit { text-align: left !important; background: #dbeafe !important; color: #1e40af !important; }
     .col-plan { min-width: 100px; }
     
     .cell-label {
@@ -3235,7 +3317,12 @@ ${consolidatedTable}
                                       ) : actualRank}
                                     </td>
                                     <td className="p-2 font-medium">
-                                      {displayPlan.provider}
+                                      <div className="flex items-center gap-2">
+                                        {getProviderLogo(displayPlan.provider) && (
+                                          <img src={getProviderLogo(displayPlan.provider)!} alt="" className="w-14 h-10 object-contain rounded" />
+                                        )}
+                                        <span>{displayPlan.provider}</span>
+                                      </div>
                                       {plan.isManual && <span className="ml-1 px-1 py-0.5 bg-purple-100 text-purple-600 text-xs rounded">Manual</span>}
                                     </td>
                                     <td className="p-2">{displayPlan.network}</td>
