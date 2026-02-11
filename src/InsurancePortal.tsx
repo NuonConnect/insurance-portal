@@ -1260,7 +1260,7 @@ export default function InsurancePortal() {
         const parsed = JSON.parse(history);
         // Keep only last 10 entries to prevent quota issues
         if (parsed.length > 10) {
-          const trimmed = parsed.slice(-10);
+        const trimmed = parsed;
           localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(trimmed));
           setReportHistory(trimmed);
         } else {
@@ -2046,10 +2046,7 @@ export default function InsurancePortal() {
       };
       
       // Keep only last 10 reports to prevent quota issues
-      let history = [...reportHistory, reportState];
-      if (history.length > 10) {
-        history = history.slice(-10);
-      }
+     // No limit - keep all history
       
       localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
       setReportHistory(history);
