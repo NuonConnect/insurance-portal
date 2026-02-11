@@ -1256,17 +1256,10 @@ export default function InsurancePortal() {
     // Load local history
     try {
       const history = localStorage.getItem(STORAGE_KEYS.REPORT_HISTORY);
-      if (history) {
-        const parsed = JSON.parse(history);
-        // Keep only last 10 entries to prevent quota issues
-        if (parsed.length > 10) {
-        const trimmed = parsed;
-          localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(trimmed));
-          setReportHistory(trimmed);
-        } else {
-          setReportHistory(parsed);
-        }
-      }
+ if (history) {
+  const parsed = JSON.parse(history);
+  setReportHistory(parsed);  // Load ALL history
+}
     } catch (e) {
       console.error('Error loading history:', e);
       // Clear corrupted history
@@ -2045,8 +2038,8 @@ export default function InsurancePortal() {
         manualPlans // Save manual plans so they can be restored
       };
       
-      // Keep only last 10 reports to prevent quota issues
-     // No limit - keep all history
+      // Save all reports (no limit)
+let history = [...reportHistory, reportState];
       
       localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
       setReportHistory(history);
