@@ -137,6 +137,8 @@ const PROVIDER_LOGOS: { [key: string]: string } = {
   'TAKAFUL EMARAT': 'https://i.ibb.co/2LjDzfG/Takaful-Emarat.png',
   'DUBAI INSURANCE': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
   'DIC': 'https://i.ibb.co/7NTvNS0K/DIC.jpg',
+  'MEDGULF': 'https://i.ibb.co/fzbxsRvY/medgulf.png',
+'MED GULF': 'https://i.ibb.co/fzbxsRvY/medgulf.png',
 };
 
 // Helper function to get logo URL for a provider
