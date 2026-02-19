@@ -1121,7 +1121,7 @@ export default function InsurancePortal() {
   const [cloudBenefits, setCloudBenefits] = useState<{ [key: string]: PlanBenefits }>({});
   
   // Cloud plan edits (plan name, network, copay) - syncs across all users
-  const [cloudPlanEdits, setCloudPlanEdits] = useState<{ [planId: string]: { plan?: string; network?: string; copay?: string } }>({});
+const [cloudPlanEdits, setCloudPlanEdits] = useState<{ [key: string]: { provider?: string; plan?: string; network?: string; copay?: string } }>({});
   
   // LOCAL PERSISTENT EDITS - These survive page refresh (now member-specific: memberId_planId for premium only)
   const [localPlanEdits, setLocalPlanEdits] = useState<{ [memberPlanKey: string]: { plan?: string; network?: string; copay?: string; premium?: number } }>({});
@@ -1359,16 +1359,17 @@ export default function InsurancePortal() {
     
     if (!cloudEdits && !localEdits && !benefitsEdits) return plan;
     
-    return {
-      ...plan,
-      // Plan name, network, copay come from cloud edits (shared)
-      plan: cloudEdits?.plan || plan.plan,
-      network: cloudEdits?.network || plan.network,
-      copay: cloudEdits?.copay || plan.copay,
-      // Premium comes from local member-specific edits
-      premium: localEdits?.premium !== undefined ? localEdits.premium : plan.premium,
-      benefits: benefitsEdits || plan.benefits
-    };
+return {
+  ...plan,
+  // Provider, plan name, network, copay come from cloud edits (shared)
+  provider: cloudEdits?.provider || plan.provider,  // ADD THIS LINE
+  plan: cloudEdits?.plan || plan.plan,
+  network: cloudEdits?.network || plan.network,
+  copay: cloudEdits?.copay || plan.copay,
+  // Premium comes from local member-specific edits
+  premium: localEdits?.premium !== undefined ? localEdits.premium : plan.premium,
+  benefits: benefitsEdits || plan.benefits
+};
   };
 
   // Auto-update relationship when DOB changes
@@ -1498,13 +1499,16 @@ export default function InsurancePortal() {
     }
   };
 
-  // Delete manual plan
-  const deleteManualPlan = async (providerKey: string, planId: string) => {
-    // Remove from manualPlans state
-    const updatedManualPlans = {
-      ...manualPlans,
-      [providerKey]: manualPlans[providerKey]?.filter(p => p.id !== planId) || []
-    };
+// Delete manual plan
+const deleteManualPlan = async (providerKey: string, planId: string) => {
+  // ADD THIS LINE ↓
+  if (!window.confirm('Are you sure you want to delete this plan?')) return;
+  
+  // Remove from manualPlans state
+  const updatedManualPlans = {
+    ...manualPlans,
+    [providerKey]: manualPlans[providerKey]?.filter(p => p.id !== planId) || []
+  };
     setManualPlans(updatedManualPlans);
     
     // Also remove from memberResults if search has been done
@@ -1813,11 +1817,13 @@ export default function InsurancePortal() {
     const memberPlanKey = `${editingMemberId}_${planId}`;
     
     // Cloud data for plan name, network, copay (shared across all users)
-    const cloudEditData = {
-      plan: editingResultPlan.plan,
-      network: editingResultPlan.network || 'Standard',
-      copay: editingResultPlan.copay || 'Variable'
-    };
+ // Cloud data for provider, plan name, network, copay (shared across all users)
+const cloudEditData = {
+  provider: editingResultPlan.provider,  // ADD THIS LINE
+  plan: editingResultPlan.plan,
+  network: editingResultPlan.network || 'Standard',
+  copay: editingResultPlan.copay || 'Variable'
+};
     
     // Local data for premium only (member-specific)
     const premiumValue = parseFloat(editingResultPlan.premium);
@@ -1840,15 +1846,16 @@ export default function InsurancePortal() {
         updated[mId] = {
           ...updated[mId],
           comparison: updated[mId].comparison.map((item: any) =>
-            item.id === planId ? {
-              ...item,
-              // Plan name, network, copay apply to all members
-              plan: cloudEditData.plan,
-              network: cloudEditData.network,
-              copay: cloudEditData.copay,
-              // Premium only changes for the current member being edited
-              premium: mId === editingMemberId ? premiumValue : item.premium
-            } : item
+       item.id === planId ? {
+  ...item,
+  // Provider, plan name, network, copay apply to all members
+  provider: cloudEditData.provider,  // ADD THIS LINE
+  plan: cloudEditData.plan,
+  network: cloudEditData.network,
+  copay: cloudEditData.copay,
+  // Premium only changes for the current member being edited
+  premium: mId === editingMemberId ? premiumValue : item.premium
+} : item
           )
         };
       });
@@ -2037,7 +2044,8 @@ export default function InsurancePortal() {
         sharedSettings,
         memberResults: minimalMemberResults,
         advisorComment,
-        manualPlans // Save manual plans so they can be restored
+        manualPlans, 
+        savedHTML: null
       };
       
       // Save all reports (no limit)
@@ -2252,6 +2260,37 @@ let history = [...reportHistory, reportState];
       alert('✅ Report loaded successfully with all comparisons restored!');
     }, 100);
   };
+
+// View saved report
+const viewReportFromHistory = (reportId: number) => {
+  const report = reportHistory.find(r => r.id === reportId);
+  if (!report?.savedHTML) {
+    alert('No saved report found. Please regenerate the report.');
+    return;
+  }
+  const blob = new Blob([report.savedHTML], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+};
+// Download saved report
+const downloadReportFromHistory = (reportId: number) => {
+  const report = reportHistory.find(r => r.id === reportId);
+  if (!report?.savedHTML) {
+    alert('No saved report found. Please regenerate the report.');
+    return;
+  }
+  const blob = new Blob([report.savedHTML], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${report.name}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+
 
   // Delete from history
   const deleteReportFromHistory = (reportId: number) => {
@@ -2581,7 +2620,8 @@ let history = [...reportHistory, reportState];
     
     html, body {
       width: 297mm;
-      height: 210mm;
+       min-height: 210mm;
+  height: auto;
       font-family: Arial, Helvetica, sans-serif;
       font-size: 9px;
       line-height: 1.3;
@@ -2609,20 +2649,21 @@ let history = [...reportHistory, reportState];
     
     /* Report Page */
     .page-wrapper {
-      width: 297mm;
-      height: 210mm;
+     width: 297mm;
+  min-height: 210mm;
+  height: auto;
       padding: 8mm;
       position: relative;
       background: white;
-      page-break-after: always;
-      page-break-inside: avoid;
-      overflow: hidden;
+      overflow: visible;
+  page-break-after: auto;
+  page-break-inside: auto;
     }
     
-    .page-content {
-      height: calc(210mm - 16mm - 45px);
-      overflow: hidden;
-    }
+.page-content {
+  height: auto;
+  overflow: visible;
+}
     
     /* Header */
     .header-row {
@@ -2659,6 +2700,7 @@ let history = [...reportHistory, reportState];
       border-collapse: collapse;
       font-size: 8px;
       margin-bottom: 6px;
+      page-break-inside: auto;
     }
     .main-table th,
     .main-table td {
@@ -2752,7 +2794,18 @@ let history = [...reportHistory, reportState];
       text-align: center !important;
       vertical-align: middle !important;
     }
-    
+    .main-table tr {
+  page-break-inside: avoid;
+  page-break-after: auto;
+}
+
+.main-table thead {
+  display: table-header-group;
+}
+
+.row-total, .row-subtotal {
+  page-break-inside: avoid;
+}
     /* Tags */
     .tag {
       display: inline-block;
@@ -2785,10 +2838,10 @@ let history = [...reportHistory, reportState];
     
     /* Footer */
     .page-footer {
-      position: absolute;
-      bottom: 8mm;
-      left: 8mm;
-      right: 8mm;
+    position: relative;
+  margin-top: 10px;
+ margin-left: 0;
+  margin-right: 0;
       display: flex;
       justify-content: space-between;
       background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%);
@@ -2805,11 +2858,12 @@ let history = [...reportHistory, reportState];
     @media print {
       html, body {
         width: 297mm;
-        height: 210mm;
+        min-height: 210mm;
+  height: auto;
       }
       .page-wrapper {
-        page-break-after: always;
-        page-break-inside: avoid;
+         page-break-after: auto;
+    page-break-inside: auto; 
       }
       .cover-page {
         page-break-after: always;
@@ -2824,7 +2878,20 @@ let history = [...reportHistory, reportState];
 ${consolidatedTable}
 </body>
 </html>`;
-
+// Update history with generated HTML
+    try {
+      const historyStr = localStorage.getItem(STORAGE_KEYS.REPORT_HISTORY);
+      if (historyStr) {
+        const history = JSON.parse(historyStr);
+        if (history.length > 0) {
+          history[history.length - 1].savedHTML = reportHTML;
+          localStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(history));
+          setReportHistory(history);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save HTML to history:', e);
+    }
     // Use iframe approach - doesn't get blocked by browsers
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -3073,12 +3140,19 @@ ${consolidatedTable}
         {showEditResultPlanModal && editingResultPlan && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full m-4">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Plan</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name</label>
-                  <input type="text" value={editingResultPlan.plan} onChange={(e) => setEditingResultPlan({ ...editingResultPlan, plan: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
-                </div>
+             <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Plan</h3>
+<div className="space-y-4">
+  {/* ADD THIS BLOCK - Insurer Name */}
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">Insurer Name</label>
+    <input type="text" value={editingResultPlan.provider || ''} onChange={(e) => setEditingResultPlan({ ...editingResultPlan, provider: e.target.value })} className="w-full px-4 py-2 border rounded-lg" placeholder="e.g., WATANIA TAKAFUL" />
+  </div>
+  {/* END OF ADDED BLOCK */}
+  
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name</label>
+    <input type="text" value={editingResultPlan.plan} onChange={(e) => setEditingResultPlan({ ...editingResultPlan, plan: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
+  </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Network</label>
                   <input type="text" value={editingResultPlan.network} onChange={(e) => setEditingResultPlan({ ...editingResultPlan, network: e.target.value })} className="w-full px-4 py-2 border rounded-lg" />
@@ -3474,18 +3548,48 @@ ${consolidatedTable}
                 <p className="text-gray-500 text-center py-4">No reports saved yet</p>
               ) : (
                 <div className="space-y-2">
-                  {reportHistory.map(report => (
-                    <div key={report.id} className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-800">{report.name}</p>
-                        <p className="text-xs text-gray-500">{new Date(report.timestamp).toLocaleString()}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => loadReportFromHistory(report.id)} className="px-3 py-1 bg-purple-600 text-white rounded text-sm">Load</button>
-                        <button onClick={() => deleteReportFromHistory(report.id)} className="px-3 py-1 bg-red-500 text-white rounded text-sm">🗑️</button>
-                      </div>
-                    </div>
-                  ))}
+              {reportHistory.map(report => (
+  <div key={report.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+    <div>
+      <div className="font-medium text-gray-800">{report.name}</div>
+      <div className="text-sm text-gray-500">{new Date(report.timestamp).toLocaleString()}</div>
+    </div>
+    <div className="flex gap-2">
+      {/* View/Edit Button */}
+      <button 
+        onClick={() => loadReportFromHistory(report.id)} 
+        className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm flex items-center gap-1"
+      >
+        ✏️ View/Edit
+      </button>
+      {/* View Button */}
+      <button 
+        onClick={() => viewReportFromHistory(report.id)} 
+        className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm flex items-center gap-1"
+        disabled={!report.savedHTML}
+        title={report.savedHTML ? 'View saved report' : 'No saved report'}
+      >
+        👁️ View
+      </button>
+      {/* Download Button */}
+      <button 
+        onClick={() => downloadReportFromHistory(report.id)} 
+        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1"
+        disabled={!report.savedHTML}
+        title={report.savedHTML ? 'Download report' : 'No saved report'}
+      >
+        ⬇️
+      </button>
+      {/* Delete Button */}
+      <button 
+        onClick={() => deleteReportFromHistory(report.id)} 
+        className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm"
+      >
+        🗑️
+      </button>
+    </div>
+  </div>
+))}
                 </div>
               )}
               
